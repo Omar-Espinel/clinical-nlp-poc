@@ -1,0 +1,246 @@
+[
+  {
+    "id": "TC001",
+    "input": "Phase 3 type 2 diabetes trials in New York",
+    "expected": {
+      "snomed_codes": ["44054006"],
+      "filters": {
+        "city": "New York City",
+        "state": "New York",
+        "phase": "Phase 3"
+      }
+    },
+    "description": "Basic condition, location, phase"
+  },
+  {
+    "id": "TC002",
+    "input": "T2DM clinical research studies phase 2",
+    "expected": {
+      "snomed_codes": ["44054006"],
+      "filters": {
+        "phase": "Phase 2"
+      }
+    },
+    "description": "Medical abbreviation T2DM expands to type 2 diabetes mellitus"
+  },
+  {
+    "id": "TC003",
+    "input": "Clinical trials for heart failure in NYC",
+    "expected": {
+      "snomed_codes": ["84114007"],
+      "filters": {
+        "city": "New York City",
+        "state": "New York"
+      }
+    },
+    "description": "City alias NYC resolves to New York City"
+  },
+  {
+    "id": "TC004",
+    "input": "Breast cancer Phase III studies at Memorial Sloan Kettering",
+    "expected": {
+      "snomed_codes": ["254837009"],
+      "filters": {
+        "site_name": "Memorial Sloan Kettering",
+        "phase": "Phase 3"
+      }
+    },
+    "description": "Phase variation Phase III normalizes to Phase 3"
+  },
+  {
+    "id": "TC005",
+    "input": "Dr. Sarah Johnson rheumatoid arthritis research",
+    "expected": {
+      "snomed_codes": ["69896004"],
+      "filters": {
+        "investigator_name": "Sarah Johnson"
+      }
+    },
+    "description": "Full investigator name Dr. Sarah Johnson extracts correctly without title"
+  },
+  {
+    "id": "TC006",
+    "input": "Dr. Smith oncology trials in Chicago",
+    "expected": {
+      "snomed_codes": [],
+      "filters": {
+        "investigator_name": "Smith",
+        "city": "Chicago",
+        "state": "Illinois"
+      }
+    },
+    "description": "Last name only investigator Dr. Smith extracts correctly"
+  },
+  {
+    "id": "TC007",
+    "input": "Diabetes research at Mayo Clinic in Minnesota",
+    "expected": {
+      "snomed_codes": ["73211009"],
+      "filters": {
+        "site_name": "Mayo Clinic",
+        "state": "Minnesota"
+      }
+    },
+    "description": "Site name Mayo Clinic and state Minnesota extracted"
+  },
+  {
+    "id": "TC008",
+    "input": "Heart failure trials excluding diabetes patients",
+    "expected": {
+      "snomed_codes_present": ["84114007"],
+      "snomed_codes_absent": ["73211009", "44054006", "46635009"],
+      "filters": {}
+    },
+    "description": "Negation: diabetes code must NOT appear in snomed_terms output"
+  },
+  {
+    "id": "TC009",
+    "input": "COPD and hypertension comorbidity trials in Seattle",
+    "expected": {
+      "snomed_codes": ["13645005", "38341003"],
+      "filters": {
+        "city": "Seattle",
+        "state": "Washington"
+      }
+    },
+    "description": "Multiple conditions COPD and hypertension with city"
+  },
+  {
+    "id": "TC010",
+    "input": "Alzheimer disease",
+    "expected": {
+      "snomed_codes": ["26929004"],
+      "filters": {}
+    },
+    "description": "Minimal single-term query"
+  },
+  {
+    "id": "TC011",
+    "input": "NSCLC immunotherapy trials Phase 2 in Texas",
+    "expected": {
+      "snomed_codes": ["254637007"],
+      "filters": {
+        "state": "Texas",
+        "phase": "Phase 2"
+      }
+    },
+    "description": "Abbreviation NSCLC expands to non-small cell lung carcinoma"
+  },
+  {
+    "id": "TC012",
+    "input": "HCC liver cancer trials in LA",
+    "expected": {
+      "snomed_codes": ["25370001"],
+      "filters": {
+        "city": "Los Angeles",
+        "state": "California"
+      }
+    },
+    "description": "Abbreviation HCC and city alias LA resolves to Los Angeles"
+  },
+  {
+    "id": "TC013",
+    "input": "Parkinson disease research in the Bay Area",
+    "expected": {
+      "snomed_codes": ["49049000"],
+      "filters": {
+        "city": "San Francisco",
+        "state": "California"
+      }
+    },
+    "description": "Region reference Bay Area resolves to San Francisco, California"
+  },
+  {
+    "id": "TC014",
+    "input": "Multiple myeloma clinical trials in Toronto",
+    "expected": {
+      "snomed_codes": ["109989006"],
+      "filters": {
+        "city": "Toronto",
+        "state": "Ontario"
+      }
+    },
+    "description": "Canadian city Toronto with Ontario province"
+  },
+  {
+    "id": "TC015",
+    "input": "Acute lymphoblastic leukemia Phase 1/2 studies",
+    "expected": {
+      "snomed_codes": ["91857003"],
+      "filters": {
+        "phase": "Phase 1/2"
+      }
+    },
+    "description": "Phase 1/2 combination phase extracted correctly"
+  },
+  {
+    "id": "TC016",
+    "input": "Dr. Williams Phase 3 atrial fibrillation trials at Johns Hopkins in Baltimore Maryland",
+    "expected": {
+      "snomed_codes": ["49436004"],
+      "filters": {
+        "investigator_name": "Williams",
+        "site_name": "Johns Hopkins",
+        "city": "Baltimore",
+        "state": "Maryland",
+        "phase": "Phase 3"
+      }
+    },
+    "description": "All five filters present in one query"
+  },
+  {
+    "id": "TC017",
+    "input": "Rheumatoid arthritis trials in Bostun Massachusetts",
+    "expected": {
+      "snomed_codes": ["69896004"],
+      "filters": {
+        "city": "Boston",
+        "state": "Massachusetts"
+      }
+    },
+    "description": "Typo in city Bostun fuzzy-matches to Boston (threshold 82)"
+  },
+  {
+    "id": "TC018",
+    "input": "diabetes stuff in LA phase 2",
+    "expected": {
+      "snomed_codes": ["73211009"],
+      "filters": {
+        "city": "Los Angeles",
+        "state": "California",
+        "phase": "Phase 2"
+      }
+    },
+    "description": "Informal query with diabetes, LA alias, and phase"
+  },
+  {
+    "id": "TC019",
+    "input": "Dr. Lee oncology research at Johns Hopkins Baltimore",
+    "expected": {
+      "snomed_codes": [],
+      "filters": {
+        "investigator_name": "Lee",
+        "site_name": "Johns Hopkins",
+        "city": "Baltimore",
+        "state": "Maryland"
+      }
+    },
+    "description": "Investigator with institution Dr. Lee at Johns Hopkins"
+  },
+  {
+    "id": "TC020",
+    "input": "Dr. Chen Phase 2 non-small cell lung cancer trials without brain metastasis at MD Anderson in Houston Texas",
+    "expected": {
+      "snomed_codes_present": ["254637007"],
+      "snomed_codes_absent": ["126952004"],
+      "filters": {
+        "investigator_name": "Chen",
+        "site_name": "MD Anderson",
+        "city": "Houston",
+        "state": "Texas",
+        "phase": "Phase 2"
+      }
+    },
+    "description": "Complex multi-condition query with exclusion of brain metastasis"
+  }
+]

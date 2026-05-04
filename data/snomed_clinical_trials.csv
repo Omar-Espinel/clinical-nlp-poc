@@ -1,0 +1,117 @@
+concept_id,preferred_term,synonyms
+44054006,type 2 diabetes mellitus,t2dm|type 2 diabetes|diabetes type 2|t2d|non-insulin dependent diabetes|niddm|adult onset diabetes mellitus
+46635009,type 1 diabetes mellitus,t1dm|type 1 diabetes|diabetes type 1|t1d|insulin dependent diabetes|iddm|juvenile onset diabetes
+73211009,diabetes mellitus,diabetes|diabetic|dm
+33747003,blood glucose measurement,blood glucose|blood sugar level|glucose level|fasting glucose|hba1c|glycated hemoglobin|a1c
+182021000,glucose monitoring,glucose management|glucose control|sugar control|blood sugar management|glucose monitoring program
+38341003,hypertension,high blood pressure|htn|elevated blood pressure|arterial hypertension|systolic hypertension|essential hypertension
+22298006,myocardial infarction,heart attack|mi|acute mi|ami|acute myocardial infarction|stemi|nstemi|cardiac infarction
+84114007,heart failure,chf|congestive heart failure|cardiac failure|hf|left heart failure|right heart failure|systolic heart failure|diastolic heart failure
+49436004,atrial fibrillation,afib|af|a-fib|irregular heartbeat|a fib|auricular fibrillation|paroxysmal afib|persistent afib
+56265001,heart disease,cardiac disease|coronary disease|cardiovascular disease|heart disorder|cardiac disorder
+230690007,cerebrovascular accident,stroke|brain stroke|cva|ischemic stroke|hemorrhagic stroke|cerebral infarction|brain attack
+128053003,deep vein thrombosis,dvt|leg clot|deep venous thrombosis|venous thrombosis leg|lower extremity dvt
+415068001,pulmonary embolism,pe|pulmonary thromboembolism|lung clot|blood clot in lung
+396275006,thrombosis,blood clot|thrombus|thromboembolism|venous thrombosis|arterial thrombosis
+400047006,peripheral arterial disease,pad|peripheral vascular disease|pvd|peripheral artery disease|arterial disease|leg artery disease
+53741008,coronary artery disease,cad|coronary heart disease|ischemic heart disease|ihd|coronary atherosclerosis
+44054006,type 2 diabetes mellitus,t2dm|type 2 diabetes|diabetes type 2|t2d|non-insulin dependent diabetes
+254837009,malignant neoplasm of breast,breast cancer|breast carcinoma|breast tumor|brca|female breast cancer|breast adenocarcinoma|invasive breast cancer|breast malignancy
+363358000,malignant neoplasm of lung,lung cancer|lung carcinoma|pulmonary malignancy|lung tumor|pulmonary cancer|lung adenocarcinoma
+254637007,non-small cell lung carcinoma,nsclc|non small cell lung cancer|non-small cell carcinoma|nsclca|squamous cell lung carcinoma|large cell lung carcinoma
+254632001,small cell lung carcinoma,sclc|small cell cancer|small cell lung cancer|oat cell carcinoma
+363406005,malignant neoplasm of colon,colon cancer|colorectal cancer|colorectal carcinoma|crc|colon carcinoma|rectal cancer|bowel cancer|colonic cancer
+25370001,hepatocellular carcinoma,liver cancer|hcc|hepatic carcinoma|liver carcinoma|hepatoma|primary liver cancer
+363418001,malignant neoplasm of pancreas,pancreatic cancer|pancreatic carcinoma|cancer of pancreas|pancreas cancer
+399068003,malignant neoplasm of prostate,prostate cancer|prostate carcinoma|prostatic cancer|cancer of prostate|prostate adenocarcinoma
+363443007,malignant neoplasm of ovary,ovarian cancer|ovarian carcinoma|cancer of ovary|ovarian malignancy
+363354003,malignant neoplasm of cervix uteri,cervical cancer|cervical carcinoma|cancer of cervix|uterine cervical cancer
+126952004,malignant neoplasm of brain,brain cancer|brain carcinoma|malignant brain tumor|brain malignancy|glioblastoma multiforme|gbm|glioma|astrocytoma
+108369006,neoplasm,tumor|neoplasm nos|mass|growth|neoplastic lesion
+363346000,malignant neoplasm,cancer|malignant tumor|malignant neoplasm nos|carcinoma|malignancy
+372064008,malignant neoplasm of bone,bone cancer|bone sarcoma|osteosarcoma|ewing sarcoma|bone malignancy
+363518003,malignant neoplasm of kidney,kidney cancer|renal cancer|renal cell carcinoma|rcc|renal carcinoma|kidney carcinoma
+399326009,malignant neoplasm of urinary bladder,bladder cancer|bladder carcinoma|urothelial carcinoma|transitional cell carcinoma
+363478007,malignant neoplasm of thyroid gland,thyroid cancer|thyroid carcinoma|papillary thyroid cancer|follicular thyroid cancer
+363349007,malignant neoplasm of stomach,stomach cancer|gastric cancer|gastric carcinoma|gastric adenocarcinoma|stomach carcinoma
+363416006,malignant neoplasm of esophagus,esophageal cancer|esophageal carcinoma|oesophageal cancer|cancer of esophagus
+372244006,malignant melanoma,melanoma|skin cancer|cutaneous melanoma|skin melanoma|malignant skin melanoma
+87163000,leukemia,blood cancer|leukaemia|leukemic disease
+413448000,acute myeloid leukemia,aml|acute myelogenous leukemia|acute myelocytic leukemia
+92818009,chronic myeloid leukemia,cml|chronic myelogenous leukemia|chronic granulocytic leukemia
+91857003,acute lymphoblastic leukemia,all|acute lymphocytic leukemia|acute lymphoid leukemia
+51092000,chronic lymphocytic leukemia,cll|chronic lymphoid leukemia|b-cell cll
+118600007,malignant lymphoma,lymphoma|lymphoid malignancy|lymphatic cancer
+118601006,non-hodgkin lymphoma,nhl|non hodgkin lymphoma|non-hodgkins lymphoma|nhl lymphoma
+118600007,malignant lymphoma,lymphoma|hodgkin lymphoma|hodgkins lymphoma|hl|hodgkin disease
+109989006,multiple myeloma,mm|plasma cell myeloma|myeloma|plasmacytoma
+26929004,alzheimer disease,alzheimers|alzheimer's|alzheimer disease|alzheimer's disease|ad dementia|senile dementia|alzheimers disease
+49049000,parkinson disease,parkinsons|parkinson's|pd|parkinson's disease|parkinsons disease|idiopathic parkinsonism
+24700007,multiple sclerosis,ms|multiple sclerosis disease|ms disease|relapsing remitting ms|rrms|progressive ms
+86044005,amyotrophic lateral sclerosis,als|lou gehrig disease|lou gehrig's disease|motor neuron disease|mnd
+84757009,epilepsy,seizures|seizure disorder|convulsions|epileptic disorder
+191630001,vascular dementia,vascular dementia disease|multi-infarct dementia
+40379007,mild cognitive impairment,mci|cognitive impairment|memory impairment
+13645005,chronic obstructive pulmonary disease,copd|emphysema|chronic bronchitis|obstructive lung disease|chronic obstructive airways disease
+195967001,asthma,bronchial asthma|asthmatic disease|asthma attack|reactive airway disease
+40122008,idiopathic pulmonary fibrosis,ipf|pulmonary fibrosis|lung fibrosis|idiopathic fibrosing alveolitis
+19829001,lung disorder,lung disease|pulmonary disorder|pulmonary disease|respiratory disease|respiratory disorder
+39873001,pulmonary arterial hypertension,pah|pulmonary hypertension|ph|primary pulmonary hypertension
+69896004,rheumatoid arthritis,ra|rheumatoid joint disease|ra disease|rheumatoid polyarthritis|adult rheumatoid arthritis
+55464009,systemic lupus erythematosus,sle|lupus|lupus erythematosus|systemic lupus
+57760004,psoriasis,plaque psoriasis|psoriatic skin disease|chronic plaque psoriasis
+33339001,psoriatic arthritis,psa|psoriatic joint disease|psoriatic arthropathy
+24526004,inflammatory bowel disease,ibd|intestinal bowel disease|inflammatory bowel|bowel inflammation
+34000006,crohn disease,crohns|crohn's|crohn's disease|crohns disease|regional enteritis|ileitis
+64766004,ulcerative colitis,uc|colitis|inflammatory colitis|chronic ulcerative colitis
+9631008,ankylosing spondylitis,as|spondylitis|axial spondyloarthritis|axspa|bechterew disease
+86406008,human immunodeficiency virus infection,hiv|hiv infection|hiv disease|human immunodeficiency virus
+62479008,acquired immunodeficiency syndrome,aids|advanced hiv|hiv aids
+66071002,hepatitis b,hbv|hepatitis b infection|hbv infection|hepatitis b virus|chronic hepatitis b
+50711007,hepatitis c,hcv|hepatitis c infection|hcv infection|hepatitis c virus|chronic hepatitis c
+56717001,tuberculosis,tb|mycobacterium tuberculosis|pulmonary tuberculosis|active tuberculosis
+840539006,covid-19,covid|coronavirus disease 2019|sars-cov-2 infection|coronavirus|covid19
+67782005,acute respiratory distress syndrome,ards|acute lung injury|ali
+363346000,malignant neoplasm,cancer nos|malignant disease|malignant condition
+73211009,diabetes mellitus,diabetes nos|diabetic condition
+416608005,chemotherapy,chemo|chemotherapy treatment|cytotoxic therapy|systemic chemotherapy|antineoplastic therapy
+308539001,stem cell transplant,bone marrow transplant|bmt|hsct|hematopoietic stem cell transplant|bone marrow transplantation|autologous stem cell transplant
+108290001,radiation therapy,radiation|radiotherapy|rt|xrt|external beam radiation|radiation treatment|radiation oncology
+387713003,surgical procedure,surgery|operation|surgical operation|surgical treatment|surgical intervention
+86273004,biopsy procedure,biopsy|tissue biopsy|needle biopsy|core biopsy|excisional biopsy
+396540005,blood specimen collection,blood test|blood draw|venipuncture|blood sampling|phlebotomy|blood collection
+113091000,magnetic resonance imaging,mri|mri scan|magnetic resonance|nmr imaging|brain mri|whole body mri
+77477000,computed tomography,ct scan|ct|cat scan|computerized tomography|computed axial tomography
+82918005,positron emission tomography,pet scan|pet|fdg pet|pet imaging|pet ct
+363680008,radiographic imaging procedure,x-ray|xray|radiograph|plain film|chest x-ray
+268745003,echocardiography,echo|echocardiogram|cardiac ultrasound|heart ultrasound|transthoracic echo
+169230002,clinical trial,study|clinical study|research trial|investigational study
+45670000,immunotherapy,immune therapy|immunological therapy|biological therapy|biotherapy
+372687004,amoxicillin,antibiotic|penicillin antibiotic|beta-lactam antibiotic
+410942007,drug therapy,medication|pharmacotherapy|drug treatment|pharmacological treatment|systemic therapy
+229306004,physical therapy,physiotherapy|rehabilitation|physical rehabilitation|rehab
+67811000,prostate specific antigen measurement,psa test|psa measurement|prostate specific antigen|psa level|psa screening
+43478001,lymph node procedure,lymph node biopsy|lymph node dissection|sentinel node biopsy
+281464007,blood pressure measurement,bp measurement|blood pressure monitoring|bp monitoring|blood pressure check
+271442007,fasting blood glucose measurement,fasting glucose test|fasting blood sugar|fbg|fbs
+77386006,pregnancy,gestation|pregnant|gravid|maternity
+415068001,pulmonary embolism,pe|lung embolism|pulmonary thromboembolism|blood clot lung
+61929009,organ transplantation,transplant|organ transplant|solid organ transplant
+76571007,cardiomyopathy,cardiac myopathy|heart muscle disease|myocardial disease
+41339005,angina pectoris,angina|chest pain|stable angina|unstable angina|anginal pain
+233726005,aortic stenosis,aortic valve stenosis|as|aortic valve disease|severe aortic stenosis
+195006006,atrial flutter,afl|auricular flutter|cardiac flutter
+84114007,heart failure,hfpef|hfref|heart failure with preserved ejection fraction|heart failure with reduced ejection fraction
+13645005,chronic obstructive pulmonary disease,obstructive lung disease|chronic obstructive disease
+25374005,gastroesophageal reflux disease,gerd|acid reflux|reflux disease|gastro-oesophageal reflux|gord
+40433004,hyperlipidemia,high cholesterol|dyslipidemia|hypercholesterolemia|elevated lipids|hyperlipidaemia
+44054006,type 2 diabetes mellitus,t2 diabetes|type-2 diabetes|non-insulin-dependent diabetes
+46635009,type 1 diabetes mellitus,t1 diabetes|type-1 diabetes|insulin-dependent diabetes
+413448000,acute myeloid leukemia,acute myeloid leukaemia|aml leukemia
+254637007,non-small cell lung carcinoma,non small cell carcinoma|nsclc cancer
+25370001,hepatocellular carcinoma,hepatocellular cancer|hcc cancer|liver cell carcinoma
+254837009,malignant neoplasm of breast,breast cancer nos|brca cancer|female breast malignancy
+363406005,malignant neoplasm of colon,colon cancer nos|colorectal carcinoma|rectal carcinoma|bowel carcinoma
+109989006,multiple myeloma,multiple myeloma disease|plasma cell cancer|myeloma disease
+363518003,malignant neoplasm of kidney,kidney carcinoma|renal malignancy|rcc cancer
+118600007,malignant lymphoma,lymphoma nos|lymphatic malignancy|lymphoid cancer
