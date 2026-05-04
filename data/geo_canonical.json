@@ -1,0 +1,2285 @@
+{
+  "cities": {
+    "new york city": {
+      "canonical": "New York City",
+      "state": "New York",
+      "country": "US"
+    },
+    "new york": {
+      "canonical": "New York City",
+      "state": "New York",
+      "country": "US"
+    },
+    "nyc": {
+      "canonical": "New York City",
+      "state": "New York",
+      "country": "US"
+    },
+    "ny city": {
+      "canonical": "New York City",
+      "state": "New York",
+      "country": "US"
+    },
+    "the city": {
+      "canonical": "New York City",
+      "state": "New York",
+      "country": "US"
+    },
+    "manhattan": {
+      "canonical": "New York City",
+      "state": "New York",
+      "country": "US"
+    },
+    "brooklyn": {
+      "canonical": "New York City",
+      "state": "New York",
+      "country": "US"
+    },
+    "queens": {
+      "canonical": "New York City",
+      "state": "New York",
+      "country": "US"
+    },
+    "bronx": {
+      "canonical": "New York City",
+      "state": "New York",
+      "country": "US"
+    },
+    "los angeles": {
+      "canonical": "Los Angeles",
+      "state": "California",
+      "country": "US"
+    },
+    "la": {
+      "canonical": "Los Angeles",
+      "state": "California",
+      "country": "US"
+    },
+    "l.a.": {
+      "canonical": "Los Angeles",
+      "state": "California",
+      "country": "US"
+    },
+    "los angeles ca": {
+      "canonical": "Los Angeles",
+      "state": "California",
+      "country": "US"
+    },
+    "chicago": {
+      "canonical": "Chicago",
+      "state": "Illinois",
+      "country": "US"
+    },
+    "chi": {
+      "canonical": "Chicago",
+      "state": "Illinois",
+      "country": "US"
+    },
+    "chicago il": {
+      "canonical": "Chicago",
+      "state": "Illinois",
+      "country": "US"
+    },
+    "windy city": {
+      "canonical": "Chicago",
+      "state": "Illinois",
+      "country": "US"
+    },
+    "houston": {
+      "canonical": "Houston",
+      "state": "Texas",
+      "country": "US"
+    },
+    "houston tx": {
+      "canonical": "Houston",
+      "state": "Texas",
+      "country": "US"
+    },
+    "phoenix": {
+      "canonical": "Phoenix",
+      "state": "Arizona",
+      "country": "US"
+    },
+    "phoenix az": {
+      "canonical": "Phoenix",
+      "state": "Arizona",
+      "country": "US"
+    },
+    "philadelphia": {
+      "canonical": "Philadelphia",
+      "state": "Pennsylvania",
+      "country": "US"
+    },
+    "philly": {
+      "canonical": "Philadelphia",
+      "state": "Pennsylvania",
+      "country": "US"
+    },
+    "phil": {
+      "canonical": "Philadelphia",
+      "state": "Pennsylvania",
+      "country": "US"
+    },
+    "philadelphia pa": {
+      "canonical": "Philadelphia",
+      "state": "Pennsylvania",
+      "country": "US"
+    },
+    "san antonio": {
+      "canonical": "San Antonio",
+      "state": "Texas",
+      "country": "US"
+    },
+    "san antonio tx": {
+      "canonical": "San Antonio",
+      "state": "Texas",
+      "country": "US"
+    },
+    "san diego": {
+      "canonical": "San Diego",
+      "state": "California",
+      "country": "US"
+    },
+    "san diego ca": {
+      "canonical": "San Diego",
+      "state": "California",
+      "country": "US"
+    },
+    "dallas": {
+      "canonical": "Dallas",
+      "state": "Texas",
+      "country": "US"
+    },
+    "dallas tx": {
+      "canonical": "Dallas",
+      "state": "Texas",
+      "country": "US"
+    },
+    "san jose": {
+      "canonical": "San Jose",
+      "state": "California",
+      "country": "US"
+    },
+    "san jose ca": {
+      "canonical": "San Jose",
+      "state": "California",
+      "country": "US"
+    },
+    "austin": {
+      "canonical": "Austin",
+      "state": "Texas",
+      "country": "US"
+    },
+    "austin tx": {
+      "canonical": "Austin",
+      "state": "Texas",
+      "country": "US"
+    },
+    "jacksonville": {
+      "canonical": "Jacksonville",
+      "state": "Florida",
+      "country": "US"
+    },
+    "jacksonville fl": {
+      "canonical": "Jacksonville",
+      "state": "Florida",
+      "country": "US"
+    },
+    "fort worth": {
+      "canonical": "Fort Worth",
+      "state": "Texas",
+      "country": "US"
+    },
+    "ft worth": {
+      "canonical": "Fort Worth",
+      "state": "Texas",
+      "country": "US"
+    },
+    "columbus": {
+      "canonical": "Columbus",
+      "state": "Ohio",
+      "country": "US"
+    },
+    "columbus oh": {
+      "canonical": "Columbus",
+      "state": "Ohio",
+      "country": "US"
+    },
+    "charlotte": {
+      "canonical": "Charlotte",
+      "state": "North Carolina",
+      "country": "US"
+    },
+    "charlotte nc": {
+      "canonical": "Charlotte",
+      "state": "North Carolina",
+      "country": "US"
+    },
+    "indianapolis": {
+      "canonical": "Indianapolis",
+      "state": "Indiana",
+      "country": "US"
+    },
+    "indy": {
+      "canonical": "Indianapolis",
+      "state": "Indiana",
+      "country": "US"
+    },
+    "san francisco": {
+      "canonical": "San Francisco",
+      "state": "California",
+      "country": "US"
+    },
+    "sf": {
+      "canonical": "San Francisco",
+      "state": "California",
+      "country": "US"
+    },
+    "s.f.": {
+      "canonical": "San Francisco",
+      "state": "California",
+      "country": "US"
+    },
+    "san francisco ca": {
+      "canonical": "San Francisco",
+      "state": "California",
+      "country": "US"
+    },
+    "frisco": {
+      "canonical": "San Francisco",
+      "state": "California",
+      "country": "US"
+    },
+    "seattle": {
+      "canonical": "Seattle",
+      "state": "Washington",
+      "country": "US"
+    },
+    "seattle wa": {
+      "canonical": "Seattle",
+      "state": "Washington",
+      "country": "US"
+    },
+    "denver": {
+      "canonical": "Denver",
+      "state": "Colorado",
+      "country": "US"
+    },
+    "denver co": {
+      "canonical": "Denver",
+      "state": "Colorado",
+      "country": "US"
+    },
+    "washington dc": {
+      "canonical": "Washington DC",
+      "state": "District of Columbia",
+      "country": "US"
+    },
+    "washington d.c.": {
+      "canonical": "Washington DC",
+      "state": "District of Columbia",
+      "country": "US"
+    },
+    "dc": {
+      "canonical": "Washington DC",
+      "state": "District of Columbia",
+      "country": "US"
+    },
+    "d.c.": {
+      "canonical": "Washington DC",
+      "state": "District of Columbia",
+      "country": "US"
+    },
+    "washington": {
+      "canonical": "Washington DC",
+      "state": "District of Columbia",
+      "country": "US"
+    },
+    "nashville": {
+      "canonical": "Nashville",
+      "state": "Tennessee",
+      "country": "US"
+    },
+    "nashville tn": {
+      "canonical": "Nashville",
+      "state": "Tennessee",
+      "country": "US"
+    },
+    "oklahoma city": {
+      "canonical": "Oklahoma City",
+      "state": "Oklahoma",
+      "country": "US"
+    },
+    "okc": {
+      "canonical": "Oklahoma City",
+      "state": "Oklahoma",
+      "country": "US"
+    },
+    "el paso": {
+      "canonical": "El Paso",
+      "state": "Texas",
+      "country": "US"
+    },
+    "boston": {
+      "canonical": "Boston",
+      "state": "Massachusetts",
+      "country": "US"
+    },
+    "boston ma": {
+      "canonical": "Boston",
+      "state": "Massachusetts",
+      "country": "US"
+    },
+    "las vegas": {
+      "canonical": "Las Vegas",
+      "state": "Nevada",
+      "country": "US"
+    },
+    "vegas": {
+      "canonical": "Las Vegas",
+      "state": "Nevada",
+      "country": "US"
+    },
+    "las vegas nv": {
+      "canonical": "Las Vegas",
+      "state": "Nevada",
+      "country": "US"
+    },
+    "portland": {
+      "canonical": "Portland",
+      "state": "Oregon",
+      "country": "US"
+    },
+    "portland or": {
+      "canonical": "Portland",
+      "state": "Oregon",
+      "country": "US"
+    },
+    "memphis": {
+      "canonical": "Memphis",
+      "state": "Tennessee",
+      "country": "US"
+    },
+    "memphis tn": {
+      "canonical": "Memphis",
+      "state": "Tennessee",
+      "country": "US"
+    },
+    "louisville": {
+      "canonical": "Louisville",
+      "state": "Kentucky",
+      "country": "US"
+    },
+    "baltimore": {
+      "canonical": "Baltimore",
+      "state": "Maryland",
+      "country": "US"
+    },
+    "baltimore md": {
+      "canonical": "Baltimore",
+      "state": "Maryland",
+      "country": "US"
+    },
+    "milwaukee": {
+      "canonical": "Milwaukee",
+      "state": "Wisconsin",
+      "country": "US"
+    },
+    "albuquerque": {
+      "canonical": "Albuquerque",
+      "state": "New Mexico",
+      "country": "US"
+    },
+    "tucson": {
+      "canonical": "Tucson",
+      "state": "Arizona",
+      "country": "US"
+    },
+    "fresno": {
+      "canonical": "Fresno",
+      "state": "California",
+      "country": "US"
+    },
+    "mesa": {
+      "canonical": "Mesa",
+      "state": "Arizona",
+      "country": "US"
+    },
+    "kansas city": {
+      "canonical": "Kansas City",
+      "state": "Missouri",
+      "country": "US"
+    },
+    "kansas city mo": {
+      "canonical": "Kansas City",
+      "state": "Missouri",
+      "country": "US"
+    },
+    "atlanta": {
+      "canonical": "Atlanta",
+      "state": "Georgia",
+      "country": "US"
+    },
+    "atlanta ga": {
+      "canonical": "Atlanta",
+      "state": "Georgia",
+      "country": "US"
+    },
+    "sacramento": {
+      "canonical": "Sacramento",
+      "state": "California",
+      "country": "US"
+    },
+    "sacramento ca": {
+      "canonical": "Sacramento",
+      "state": "California",
+      "country": "US"
+    },
+    "long beach": {
+      "canonical": "Long Beach",
+      "state": "California",
+      "country": "US"
+    },
+    "colorado springs": {
+      "canonical": "Colorado Springs",
+      "state": "Colorado",
+      "country": "US"
+    },
+    "raleigh": {
+      "canonical": "Raleigh",
+      "state": "North Carolina",
+      "country": "US"
+    },
+    "raleigh nc": {
+      "canonical": "Raleigh",
+      "state": "North Carolina",
+      "country": "US"
+    },
+    "miami": {
+      "canonical": "Miami",
+      "state": "Florida",
+      "country": "US"
+    },
+    "miami fl": {
+      "canonical": "Miami",
+      "state": "Florida",
+      "country": "US"
+    },
+    "omaha": {
+      "canonical": "Omaha",
+      "state": "Nebraska",
+      "country": "US"
+    },
+    "minneapolis": {
+      "canonical": "Minneapolis",
+      "state": "Minnesota",
+      "country": "US"
+    },
+    "minneapolis mn": {
+      "canonical": "Minneapolis",
+      "state": "Minnesota",
+      "country": "US"
+    },
+    "tulsa": {
+      "canonical": "Tulsa",
+      "state": "Oklahoma",
+      "country": "US"
+    },
+    "cleveland": {
+      "canonical": "Cleveland",
+      "state": "Ohio",
+      "country": "US"
+    },
+    "cleveland oh": {
+      "canonical": "Cleveland",
+      "state": "Ohio",
+      "country": "US"
+    },
+    "wichita": {
+      "canonical": "Wichita",
+      "state": "Kansas",
+      "country": "US"
+    },
+    "arlington": {
+      "canonical": "Arlington",
+      "state": "Texas",
+      "country": "US"
+    },
+    "new orleans": {
+      "canonical": "New Orleans",
+      "state": "Louisiana",
+      "country": "US"
+    },
+    "new orleans la": {
+      "canonical": "New Orleans",
+      "state": "Louisiana",
+      "country": "US"
+    },
+    "bakersfield": {
+      "canonical": "Bakersfield",
+      "state": "California",
+      "country": "US"
+    },
+    "tampa": {
+      "canonical": "Tampa",
+      "state": "Florida",
+      "country": "US"
+    },
+    "tampa fl": {
+      "canonical": "Tampa",
+      "state": "Florida",
+      "country": "US"
+    },
+    "honolulu": {
+      "canonical": "Honolulu",
+      "state": "Hawaii",
+      "country": "US"
+    },
+    "aurora": {
+      "canonical": "Aurora",
+      "state": "Colorado",
+      "country": "US"
+    },
+    "anaheim": {
+      "canonical": "Anaheim",
+      "state": "California",
+      "country": "US"
+    },
+    "santa ana": {
+      "canonical": "Santa Ana",
+      "state": "California",
+      "country": "US"
+    },
+    "corpus christi": {
+      "canonical": "Corpus Christi",
+      "state": "Texas",
+      "country": "US"
+    },
+    "riverside": {
+      "canonical": "Riverside",
+      "state": "California",
+      "country": "US"
+    },
+    "lexington": {
+      "canonical": "Lexington",
+      "state": "Kentucky",
+      "country": "US"
+    },
+    "st. louis": {
+      "canonical": "St. Louis",
+      "state": "Missouri",
+      "country": "US"
+    },
+    "st louis": {
+      "canonical": "St. Louis",
+      "state": "Missouri",
+      "country": "US"
+    },
+    "saint louis": {
+      "canonical": "St. Louis",
+      "state": "Missouri",
+      "country": "US"
+    },
+    "pittsburgh": {
+      "canonical": "Pittsburgh",
+      "state": "Pennsylvania",
+      "country": "US"
+    },
+    "pittsburgh pa": {
+      "canonical": "Pittsburgh",
+      "state": "Pennsylvania",
+      "country": "US"
+    },
+    "anchorage": {
+      "canonical": "Anchorage",
+      "state": "Alaska",
+      "country": "US"
+    },
+    "stockton": {
+      "canonical": "Stockton",
+      "state": "California",
+      "country": "US"
+    },
+    "cincinnati": {
+      "canonical": "Cincinnati",
+      "state": "Ohio",
+      "country": "US"
+    },
+    "cincinnati oh": {
+      "canonical": "Cincinnati",
+      "state": "Ohio",
+      "country": "US"
+    },
+    "st. paul": {
+      "canonical": "St. Paul",
+      "state": "Minnesota",
+      "country": "US"
+    },
+    "st paul": {
+      "canonical": "St. Paul",
+      "state": "Minnesota",
+      "country": "US"
+    },
+    "greensboro": {
+      "canonical": "Greensboro",
+      "state": "North Carolina",
+      "country": "US"
+    },
+    "toledo": {
+      "canonical": "Toledo",
+      "state": "Ohio",
+      "country": "US"
+    },
+    "newark": {
+      "canonical": "Newark",
+      "state": "New Jersey",
+      "country": "US"
+    },
+    "newark nj": {
+      "canonical": "Newark",
+      "state": "New Jersey",
+      "country": "US"
+    },
+    "orlando": {
+      "canonical": "Orlando",
+      "state": "Florida",
+      "country": "US"
+    },
+    "orlando fl": {
+      "canonical": "Orlando",
+      "state": "Florida",
+      "country": "US"
+    },
+    "irvine": {
+      "canonical": "Irvine",
+      "state": "California",
+      "country": "US"
+    },
+    "durham": {
+      "canonical": "Durham",
+      "state": "North Carolina",
+      "country": "US"
+    },
+    "durham nc": {
+      "canonical": "Durham",
+      "state": "North Carolina",
+      "country": "US"
+    },
+    "fort wayne": {
+      "canonical": "Fort Wayne",
+      "state": "Indiana",
+      "country": "US"
+    },
+    "madison": {
+      "canonical": "Madison",
+      "state": "Wisconsin",
+      "country": "US"
+    },
+    "madison wi": {
+      "canonical": "Madison",
+      "state": "Wisconsin",
+      "country": "US"
+    },
+    "chapel hill": {
+      "canonical": "Chapel Hill",
+      "state": "North Carolina",
+      "country": "US"
+    },
+    "chapel hill nc": {
+      "canonical": "Chapel Hill",
+      "state": "North Carolina",
+      "country": "US"
+    },
+    "ann arbor": {
+      "canonical": "Ann Arbor",
+      "state": "Michigan",
+      "country": "US"
+    },
+    "ann arbor mi": {
+      "canonical": "Ann Arbor",
+      "state": "Michigan",
+      "country": "US"
+    },
+    "salt lake city": {
+      "canonical": "Salt Lake City",
+      "state": "Utah",
+      "country": "US"
+    },
+    "slc": {
+      "canonical": "Salt Lake City",
+      "state": "Utah",
+      "country": "US"
+    },
+    "salt lake": {
+      "canonical": "Salt Lake City",
+      "state": "Utah",
+      "country": "US"
+    },
+    "rochester": {
+      "canonical": "Rochester",
+      "state": "Minnesota",
+      "country": "US"
+    },
+    "rochester mn": {
+      "canonical": "Rochester",
+      "state": "Minnesota",
+      "country": "US"
+    },
+    "rochester ny": {
+      "canonical": "Rochester",
+      "state": "New York",
+      "country": "US"
+    },
+    "buffalo": {
+      "canonical": "Buffalo",
+      "state": "New York",
+      "country": "US"
+    },
+    "buffalo ny": {
+      "canonical": "Buffalo",
+      "state": "New York",
+      "country": "US"
+    },
+    "hartford": {
+      "canonical": "Hartford",
+      "state": "Connecticut",
+      "country": "US"
+    },
+    "hartford ct": {
+      "canonical": "Hartford",
+      "state": "Connecticut",
+      "country": "US"
+    },
+    "new haven": {
+      "canonical": "New Haven",
+      "state": "Connecticut",
+      "country": "US"
+    },
+    "new haven ct": {
+      "canonical": "New Haven",
+      "state": "Connecticut",
+      "country": "US"
+    },
+    "providence": {
+      "canonical": "Providence",
+      "state": "Rhode Island",
+      "country": "US"
+    },
+    "richmond": {
+      "canonical": "Richmond",
+      "state": "Virginia",
+      "country": "US"
+    },
+    "richmond va": {
+      "canonical": "Richmond",
+      "state": "Virginia",
+      "country": "US"
+    },
+    "baton rouge": {
+      "canonical": "Baton Rouge",
+      "state": "Louisiana",
+      "country": "US"
+    },
+    "des moines": {
+      "canonical": "Des Moines",
+      "state": "Iowa",
+      "country": "US"
+    },
+    "columbia": {
+      "canonical": "Columbia",
+      "state": "South Carolina",
+      "country": "US"
+    },
+    "columbia sc": {
+      "canonical": "Columbia",
+      "state": "South Carolina",
+      "country": "US"
+    },
+    "little rock": {
+      "canonical": "Little Rock",
+      "state": "Arkansas",
+      "country": "US"
+    },
+    "birmingham": {
+      "canonical": "Birmingham",
+      "state": "Alabama",
+      "country": "US"
+    },
+    "birmingham al": {
+      "canonical": "Birmingham",
+      "state": "Alabama",
+      "country": "US"
+    },
+    "jackson": {
+      "canonical": "Jackson",
+      "state": "Mississippi",
+      "country": "US"
+    },
+    "jackson ms": {
+      "canonical": "Jackson",
+      "state": "Mississippi",
+      "country": "US"
+    },
+    "fargo": {
+      "canonical": "Fargo",
+      "state": "North Dakota",
+      "country": "US"
+    },
+    "sioux falls": {
+      "canonical": "Sioux Falls",
+      "state": "South Dakota",
+      "country": "US"
+    },
+    "charleston": {
+      "canonical": "Charleston",
+      "state": "South Carolina",
+      "country": "US"
+    },
+    "charleston wv": {
+      "canonical": "Charleston",
+      "state": "West Virginia",
+      "country": "US"
+    },
+    "portland me": {
+      "canonical": "Portland",
+      "state": "Maine",
+      "country": "US"
+    },
+    "burlington": {
+      "canonical": "Burlington",
+      "state": "Vermont",
+      "country": "US"
+    },
+    "burlington vt": {
+      "canonical": "Burlington",
+      "state": "Vermont",
+      "country": "US"
+    },
+    "concord": {
+      "canonical": "Concord",
+      "state": "New Hampshire",
+      "country": "US"
+    },
+    "concord nh": {
+      "canonical": "Concord",
+      "state": "New Hampshire",
+      "country": "US"
+    },
+    "dover": {
+      "canonical": "Dover",
+      "state": "Delaware",
+      "country": "US"
+    },
+    "dover de": {
+      "canonical": "Dover",
+      "state": "Delaware",
+      "country": "US"
+    },
+    "montpelier": {
+      "canonical": "Montpelier",
+      "state": "Vermont",
+      "country": "US"
+    },
+    "cheyenne": {
+      "canonical": "Cheyenne",
+      "state": "Wyoming",
+      "country": "US"
+    },
+    "billings": {
+      "canonical": "Billings",
+      "state": "Montana",
+      "country": "US"
+    },
+    "boise": {
+      "canonical": "Boise",
+      "state": "Idaho",
+      "country": "US"
+    },
+    "eugene": {
+      "canonical": "Eugene",
+      "state": "Oregon",
+      "country": "US"
+    },
+    "spokane": {
+      "canonical": "Spokane",
+      "state": "Washington",
+      "country": "US"
+    },
+    "tacoma": {
+      "canonical": "Tacoma",
+      "state": "Washington",
+      "country": "US"
+    },
+    "olympia": {
+      "canonical": "Olympia",
+      "state": "Washington",
+      "country": "US"
+    },
+    "reno": {
+      "canonical": "Reno",
+      "state": "Nevada",
+      "country": "US"
+    },
+    "reno nv": {
+      "canonical": "Reno",
+      "state": "Nevada",
+      "country": "US"
+    },
+    "albuquerque nm": {
+      "canonical": "Albuquerque",
+      "state": "New Mexico",
+      "country": "US"
+    },
+    "santa fe": {
+      "canonical": "Santa Fe",
+      "state": "New Mexico",
+      "country": "US"
+    },
+    "tucson az": {
+      "canonical": "Tucson",
+      "state": "Arizona",
+      "country": "US"
+    },
+    "tempe": {
+      "canonical": "Tempe",
+      "state": "Arizona",
+      "country": "US"
+    },
+    "scottsdale": {
+      "canonical": "Scottsdale",
+      "state": "Arizona",
+      "country": "US"
+    },
+    "fort lauderdale": {
+      "canonical": "Fort Lauderdale",
+      "state": "Florida",
+      "country": "US"
+    },
+    "ft lauderdale": {
+      "canonical": "Fort Lauderdale",
+      "state": "Florida",
+      "country": "US"
+    },
+    "west palm beach": {
+      "canonical": "West Palm Beach",
+      "state": "Florida",
+      "country": "US"
+    },
+    "gainesville": {
+      "canonical": "Gainesville",
+      "state": "Florida",
+      "country": "US"
+    },
+    "gainesville fl": {
+      "canonical": "Gainesville",
+      "state": "Florida",
+      "country": "US"
+    },
+    "tallahassee": {
+      "canonical": "Tallahassee",
+      "state": "Florida",
+      "country": "US"
+    },
+    "st. petersburg": {
+      "canonical": "St. Petersburg",
+      "state": "Florida",
+      "country": "US"
+    },
+    "st petersburg": {
+      "canonical": "St. Petersburg",
+      "state": "Florida",
+      "country": "US"
+    },
+    "jersey city": {
+      "canonical": "Jersey City",
+      "state": "New Jersey",
+      "country": "US"
+    },
+    "jersey city nj": {
+      "canonical": "Jersey City",
+      "state": "New Jersey",
+      "country": "US"
+    },
+    "trenton": {
+      "canonical": "Trenton",
+      "state": "New Jersey",
+      "country": "US"
+    },
+    "camden": {
+      "canonical": "Camden",
+      "state": "New Jersey",
+      "country": "US"
+    },
+    "hoboken": {
+      "canonical": "Hoboken",
+      "state": "New Jersey",
+      "country": "US"
+    },
+    "princeton": {
+      "canonical": "Princeton",
+      "state": "New Jersey",
+      "country": "US"
+    },
+    "princeton nj": {
+      "canonical": "Princeton",
+      "state": "New Jersey",
+      "country": "US"
+    },
+    "bethesda": {
+      "canonical": "Bethesda",
+      "state": "Maryland",
+      "country": "US"
+    },
+    "bethesda md": {
+      "canonical": "Bethesda",
+      "state": "Maryland",
+      "country": "US"
+    },
+    "silver spring": {
+      "canonical": "Silver Spring",
+      "state": "Maryland",
+      "country": "US"
+    },
+    "rockville": {
+      "canonical": "Rockville",
+      "state": "Maryland",
+      "country": "US"
+    },
+    "rockville md": {
+      "canonical": "Rockville",
+      "state": "Maryland",
+      "country": "US"
+    },
+    "arlington va": {
+      "canonical": "Arlington",
+      "state": "Virginia",
+      "country": "US"
+    },
+    "falls church": {
+      "canonical": "Falls Church",
+      "state": "Virginia",
+      "country": "US"
+    },
+    "alexandria": {
+      "canonical": "Alexandria",
+      "state": "Virginia",
+      "country": "US"
+    },
+    "alexandria va": {
+      "canonical": "Alexandria",
+      "state": "Virginia",
+      "country": "US"
+    },
+    "norfolk": {
+      "canonical": "Norfolk",
+      "state": "Virginia",
+      "country": "US"
+    },
+    "norfolk va": {
+      "canonical": "Norfolk",
+      "state": "Virginia",
+      "country": "US"
+    },
+    "virginia beach": {
+      "canonical": "Virginia Beach",
+      "state": "Virginia",
+      "country": "US"
+    },
+    "knoxville": {
+      "canonical": "Knoxville",
+      "state": "Tennessee",
+      "country": "US"
+    },
+    "knoxville tn": {
+      "canonical": "Knoxville",
+      "state": "Tennessee",
+      "country": "US"
+    },
+    "chattanooga": {
+      "canonical": "Chattanooga",
+      "state": "Tennessee",
+      "country": "US"
+    },
+    "aurora co": {
+      "canonical": "Aurora",
+      "state": "Colorado",
+      "country": "US"
+    },
+    "boulder": {
+      "canonical": "Boulder",
+      "state": "Colorado",
+      "country": "US"
+    },
+    "boulder co": {
+      "canonical": "Boulder",
+      "state": "Colorado",
+      "country": "US"
+    },
+    "detroit": {
+      "canonical": "Detroit",
+      "state": "Michigan",
+      "country": "US"
+    },
+    "detroit mi": {
+      "canonical": "Detroit",
+      "state": "Michigan",
+      "country": "US"
+    },
+    "grand rapids": {
+      "canonical": "Grand Rapids",
+      "state": "Michigan",
+      "country": "US"
+    },
+    "grand rapids mi": {
+      "canonical": "Grand Rapids",
+      "state": "Michigan",
+      "country": "US"
+    },
+    "mayo clinic": {
+      "canonical": "Rochester",
+      "state": "Minnesota",
+      "country": "US"
+    },
+    "palo alto": {
+      "canonical": "Palo Alto",
+      "state": "California",
+      "country": "US"
+    },
+    "palo alto ca": {
+      "canonical": "Palo Alto",
+      "state": "California",
+      "country": "US"
+    },
+    "stanford": {
+      "canonical": "Palo Alto",
+      "state": "California",
+      "country": "US"
+    },
+    "menlo park": {
+      "canonical": "Menlo Park",
+      "state": "California",
+      "country": "US"
+    },
+    "mountain view": {
+      "canonical": "Mountain View",
+      "state": "California",
+      "country": "US"
+    },
+    "sunnyvale": {
+      "canonical": "Sunnyvale",
+      "state": "California",
+      "country": "US"
+    },
+    "san mateo": {
+      "canonical": "San Mateo",
+      "state": "California",
+      "country": "US"
+    },
+    "oakland": {
+      "canonical": "Oakland",
+      "state": "California",
+      "country": "US"
+    },
+    "oakland ca": {
+      "canonical": "Oakland",
+      "state": "California",
+      "country": "US"
+    },
+    "berkeley": {
+      "canonical": "Berkeley",
+      "state": "California",
+      "country": "US"
+    },
+    "berkeley ca": {
+      "canonical": "Berkeley",
+      "state": "California",
+      "country": "US"
+    },
+    "la jolla": {
+      "canonical": "La Jolla",
+      "state": "California",
+      "country": "US"
+    },
+    "la jolla ca": {
+      "canonical": "La Jolla",
+      "state": "California",
+      "country": "US"
+    },
+    "pasadena": {
+      "canonical": "Pasadena",
+      "state": "California",
+      "country": "US"
+    },
+    "pasadena ca": {
+      "canonical": "Pasadena",
+      "state": "California",
+      "country": "US"
+    },
+    "santa monica": {
+      "canonical": "Santa Monica",
+      "state": "California",
+      "country": "US"
+    },
+    "beverly hills": {
+      "canonical": "Beverly Hills",
+      "state": "California",
+      "country": "US"
+    },
+    "burbank": {
+      "canonical": "Burbank",
+      "state": "California",
+      "country": "US"
+    },
+    "torrance": {
+      "canonical": "Torrance",
+      "state": "California",
+      "country": "US"
+    },
+    "galveston": {
+      "canonical": "Galveston",
+      "state": "Texas",
+      "country": "US"
+    },
+    "galveston tx": {
+      "canonical": "Galveston",
+      "state": "Texas",
+      "country": "US"
+    },
+    "waco": {
+      "canonical": "Waco",
+      "state": "Texas",
+      "country": "US"
+    },
+    "lubbock": {
+      "canonical": "Lubbock",
+      "state": "Texas",
+      "country": "US"
+    },
+    "plano": {
+      "canonical": "Plano",
+      "state": "Texas",
+      "country": "US"
+    },
+    "irving": {
+      "canonical": "Irving",
+      "state": "Texas",
+      "country": "US"
+    },
+    "fort worth tx": {
+      "canonical": "Fort Worth",
+      "state": "Texas",
+      "country": "US"
+    },
+    "evanston": {
+      "canonical": "Evanston",
+      "state": "Illinois",
+      "country": "US"
+    },
+    "evanston il": {
+      "canonical": "Evanston",
+      "state": "Illinois",
+      "country": "US"
+    },
+    "springfield": {
+      "canonical": "Springfield",
+      "state": "Illinois",
+      "country": "US"
+    },
+    "springfield il": {
+      "canonical": "Springfield",
+      "state": "Illinois",
+      "country": "US"
+    },
+    "rockford": {
+      "canonical": "Rockford",
+      "state": "Illinois",
+      "country": "US"
+    },
+    "toledo oh": {
+      "canonical": "Toledo",
+      "state": "Ohio",
+      "country": "US"
+    },
+    "akron": {
+      "canonical": "Akron",
+      "state": "Ohio",
+      "country": "US"
+    },
+    "akron oh": {
+      "canonical": "Akron",
+      "state": "Ohio",
+      "country": "US"
+    },
+    "dayton": {
+      "canonical": "Dayton",
+      "state": "Ohio",
+      "country": "US"
+    },
+    "dayton oh": {
+      "canonical": "Dayton",
+      "state": "Ohio",
+      "country": "US"
+    },
+    "harrisburg": {
+      "canonical": "Harrisburg",
+      "state": "Pennsylvania",
+      "country": "US"
+    },
+    "allentown": {
+      "canonical": "Allentown",
+      "state": "Pennsylvania",
+      "country": "US"
+    },
+    "scranton": {
+      "canonical": "Scranton",
+      "state": "Pennsylvania",
+      "country": "US"
+    },
+    "cambridge": {
+      "canonical": "Cambridge",
+      "state": "Massachusetts",
+      "country": "US"
+    },
+    "cambridge ma": {
+      "canonical": "Cambridge",
+      "state": "Massachusetts",
+      "country": "US"
+    },
+    "worcester": {
+      "canonical": "Worcester",
+      "state": "Massachusetts",
+      "country": "US"
+    },
+    "worcester ma": {
+      "canonical": "Worcester",
+      "state": "Massachusetts",
+      "country": "US"
+    },
+    "springfield ma": {
+      "canonical": "Springfield",
+      "state": "Massachusetts",
+      "country": "US"
+    },
+    "lowell": {
+      "canonical": "Lowell",
+      "state": "Massachusetts",
+      "country": "US"
+    },
+    "toronto": {
+      "canonical": "Toronto",
+      "state": "Ontario",
+      "country": "CA"
+    },
+    "toronto on": {
+      "canonical": "Toronto",
+      "state": "Ontario",
+      "country": "CA"
+    },
+    "toronto ontario": {
+      "canonical": "Toronto",
+      "state": "Ontario",
+      "country": "CA"
+    },
+    "montreal": {
+      "canonical": "Montreal",
+      "state": "Quebec",
+      "country": "CA"
+    },
+    "montreal qc": {
+      "canonical": "Montreal",
+      "state": "Quebec",
+      "country": "CA"
+    },
+    "montreal quebec": {
+      "canonical": "Montreal",
+      "state": "Quebec",
+      "country": "CA"
+    },
+    "vancouver": {
+      "canonical": "Vancouver",
+      "state": "British Columbia",
+      "country": "CA"
+    },
+    "vancouver bc": {
+      "canonical": "Vancouver",
+      "state": "British Columbia",
+      "country": "CA"
+    },
+    "vancouver british columbia": {
+      "canonical": "Vancouver",
+      "state": "British Columbia",
+      "country": "CA"
+    },
+    "calgary": {
+      "canonical": "Calgary",
+      "state": "Alberta",
+      "country": "CA"
+    },
+    "calgary ab": {
+      "canonical": "Calgary",
+      "state": "Alberta",
+      "country": "CA"
+    },
+    "calgary alberta": {
+      "canonical": "Calgary",
+      "state": "Alberta",
+      "country": "CA"
+    },
+    "ottawa": {
+      "canonical": "Ottawa",
+      "state": "Ontario",
+      "country": "CA"
+    },
+    "ottawa on": {
+      "canonical": "Ottawa",
+      "state": "Ontario",
+      "country": "CA"
+    },
+    "ottawa ontario": {
+      "canonical": "Ottawa",
+      "state": "Ontario",
+      "country": "CA"
+    },
+    "edmonton": {
+      "canonical": "Edmonton",
+      "state": "Alberta",
+      "country": "CA"
+    },
+    "edmonton ab": {
+      "canonical": "Edmonton",
+      "state": "Alberta",
+      "country": "CA"
+    },
+    "edmonton alberta": {
+      "canonical": "Edmonton",
+      "state": "Alberta",
+      "country": "CA"
+    },
+    "mississauga": {
+      "canonical": "Mississauga",
+      "state": "Ontario",
+      "country": "CA"
+    },
+    "winnipeg": {
+      "canonical": "Winnipeg",
+      "state": "Manitoba",
+      "country": "CA"
+    },
+    "winnipeg mb": {
+      "canonical": "Winnipeg",
+      "state": "Manitoba",
+      "country": "CA"
+    },
+    "quebec city": {
+      "canonical": "Quebec City",
+      "state": "Quebec",
+      "country": "CA"
+    },
+    "hamilton": {
+      "canonical": "Hamilton",
+      "state": "Ontario",
+      "country": "CA"
+    },
+    "hamilton on": {
+      "canonical": "Hamilton",
+      "state": "Ontario",
+      "country": "CA"
+    },
+    "brampton": {
+      "canonical": "Brampton",
+      "state": "Ontario",
+      "country": "CA"
+    },
+    "surrey": {
+      "canonical": "Surrey",
+      "state": "British Columbia",
+      "country": "CA"
+    },
+    "kitchener": {
+      "canonical": "Kitchener",
+      "state": "Ontario",
+      "country": "CA"
+    },
+    "london": {
+      "canonical": "London",
+      "state": "Ontario",
+      "country": "CA"
+    },
+    "london on": {
+      "canonical": "London",
+      "state": "Ontario",
+      "country": "CA"
+    },
+    "markham": {
+      "canonical": "Markham",
+      "state": "Ontario",
+      "country": "CA"
+    },
+    "vaughan": {
+      "canonical": "Vaughan",
+      "state": "Ontario",
+      "country": "CA"
+    },
+    "gatineau": {
+      "canonical": "Gatineau",
+      "state": "Quebec",
+      "country": "CA"
+    },
+    "laval": {
+      "canonical": "Laval",
+      "state": "Quebec",
+      "country": "CA"
+    },
+    "longueuil": {
+      "canonical": "Longueuil",
+      "state": "Quebec",
+      "country": "CA"
+    },
+    "burnaby": {
+      "canonical": "Burnaby",
+      "state": "British Columbia",
+      "country": "CA"
+    },
+    "richmond bc": {
+      "canonical": "Richmond",
+      "state": "British Columbia",
+      "country": "CA"
+    },
+    "kelowna": {
+      "canonical": "Kelowna",
+      "state": "British Columbia",
+      "country": "CA"
+    },
+    "abbotsford": {
+      "canonical": "Abbotsford",
+      "state": "British Columbia",
+      "country": "CA"
+    },
+    "saskatoon": {
+      "canonical": "Saskatoon",
+      "state": "Saskatchewan",
+      "country": "CA"
+    },
+    "regina": {
+      "canonical": "Regina",
+      "state": "Saskatchewan",
+      "country": "CA"
+    },
+    "st. john's": {
+      "canonical": "St. John's",
+      "state": "Newfoundland and Labrador",
+      "country": "CA"
+    },
+    "st johns": {
+      "canonical": "St. John's",
+      "state": "Newfoundland and Labrador",
+      "country": "CA"
+    },
+    "moncton": {
+      "canonical": "Moncton",
+      "state": "New Brunswick",
+      "country": "CA"
+    },
+    "fredericton": {
+      "canonical": "Fredericton",
+      "state": "New Brunswick",
+      "country": "CA"
+    },
+    "halifax": {
+      "canonical": "Halifax",
+      "state": "Nova Scotia",
+      "country": "CA"
+    },
+    "halifax ns": {
+      "canonical": "Halifax",
+      "state": "Nova Scotia",
+      "country": "CA"
+    },
+    "charlottetown": {
+      "canonical": "Charlottetown",
+      "state": "Prince Edward Island",
+      "country": "CA"
+    },
+    "whitehorse": {
+      "canonical": "Whitehorse",
+      "state": "Yukon",
+      "country": "CA"
+    },
+    "yellowknife": {
+      "canonical": "Yellowknife",
+      "state": "Northwest Territories",
+      "country": "CA"
+    },
+    "iqaluit": {
+      "canonical": "Iqaluit",
+      "state": "Nunavut",
+      "country": "CA"
+    }
+  },
+  "states": {
+    "AL": "Alabama",
+    "AK": "Alaska",
+    "AZ": "Arizona",
+    "AR": "Arkansas",
+    "CA": "California",
+    "CO": "Colorado",
+    "CT": "Connecticut",
+    "DE": "Delaware",
+    "FL": "Florida",
+    "GA": "Georgia",
+    "HI": "Hawaii",
+    "ID": "Idaho",
+    "IL": "Illinois",
+    "IN": "Indiana",
+    "IA": "Iowa",
+    "KS": "Kansas",
+    "KY": "Kentucky",
+    "LA": "Louisiana",
+    "ME": "Maine",
+    "MD": "Maryland",
+    "MA": "Massachusetts",
+    "MI": "Michigan",
+    "MN": "Minnesota",
+    "MS": "Mississippi",
+    "MO": "Missouri",
+    "MT": "Montana",
+    "NE": "Nebraska",
+    "NV": "Nevada",
+    "NH": "New Hampshire",
+    "NJ": "New Jersey",
+    "NM": "New Mexico",
+    "NY": "New York",
+    "NC": "North Carolina",
+    "ND": "North Dakota",
+    "OH": "Ohio",
+    "OK": "Oklahoma",
+    "OR": "Oregon",
+    "PA": "Pennsylvania",
+    "RI": "Rhode Island",
+    "SC": "South Carolina",
+    "SD": "South Dakota",
+    "TN": "Tennessee",
+    "TX": "Texas",
+    "UT": "Utah",
+    "VT": "Vermont",
+    "VA": "Virginia",
+    "WA": "Washington",
+    "WV": "West Virginia",
+    "WI": "Wisconsin",
+    "WY": "Wyoming",
+    "DC": "District of Columbia",
+    "alabama": "Alabama",
+    "alaska": "Alaska",
+    "arizona": "Arizona",
+    "arkansas": "Arkansas",
+    "california": "California",
+    "cal": "California",
+    "cali": "California",
+    "colorado": "Colorado",
+    "connecticut": "Connecticut",
+    "conn": "Connecticut",
+    "delaware": "Delaware",
+    "florida": "Florida",
+    "georgia": "Georgia",
+    "hawaii": "Hawaii",
+    "idaho": "Idaho",
+    "illinois": "Illinois",
+    "indiana": "Indiana",
+    "iowa": "Iowa",
+    "kansas": "Kansas",
+    "kentucky": "Kentucky",
+    "louisiana": "Louisiana",
+    "maine": "Maine",
+    "maryland": "Maryland",
+    "massachusetts": "Massachusetts",
+    "mass": "Massachusetts",
+    "michigan": "Michigan",
+    "mich": "Michigan",
+    "minnesota": "Minnesota",
+    "minn": "Minnesota",
+    "mississippi": "Mississippi",
+    "missouri": "Missouri",
+    "montana": "Montana",
+    "nebraska": "Nebraska",
+    "nevada": "Nevada",
+    "nev": "Nevada",
+    "new hampshire": "New Hampshire",
+    "new jersey": "New Jersey",
+    "new mexico": "New Mexico",
+    "new york": "New York",
+    "north carolina": "North Carolina",
+    "north dakota": "North Dakota",
+    "ohio": "Ohio",
+    "oklahoma": "Oklahoma",
+    "oregon": "Oregon",
+    "pennsylvania": "Pennsylvania",
+    "penn": "Pennsylvania",
+    "rhode island": "Rhode Island",
+    "south carolina": "South Carolina",
+    "south dakota": "South Dakota",
+    "tennessee": "Tennessee",
+    "tenn": "Tennessee",
+    "texas": "Texas",
+    "utah": "Utah",
+    "vermont": "Vermont",
+    "virginia": "Virginia",
+    "washington": "Washington",
+    "west virginia": "West Virginia",
+    "wisconsin": "Wisconsin",
+    "wis": "Wisconsin",
+    "wyoming": "Wyoming",
+    "district of columbia": "District of Columbia",
+    "ON": "Ontario",
+    "QC": "Quebec",
+    "NS": "Nova Scotia",
+    "NB": "New Brunswick",
+    "MB": "Manitoba",
+    "BC": "British Columbia",
+    "PE": "Prince Edward Island",
+    "SK": "Saskatchewan",
+    "AB": "Alberta",
+    "NL": "Newfoundland and Labrador",
+    "NT": "Northwest Territories",
+    "YT": "Yukon",
+    "NU": "Nunavut",
+    "ontario": "Ontario",
+    "quebec": "Quebec",
+    "nova scotia": "Nova Scotia",
+    "new brunswick": "New Brunswick",
+    "manitoba": "Manitoba",
+    "british columbia": "British Columbia",
+    "prince edward island": "Prince Edward Island",
+    "pei": "Prince Edward Island",
+    "saskatchewan": "Saskatchewan",
+    "alberta": "Alberta",
+    "newfoundland": "Newfoundland and Labrador",
+    "newfoundland and labrador": "Newfoundland and Labrador",
+    "northwest territories": "Northwest Territories",
+    "yukon": "Yukon",
+    "nunavut": "Nunavut"
+  },
+  "regions": {
+    "bay area": {
+      "type": "region",
+      "primary_city": "San Francisco",
+      "state": "California",
+      "country": "US"
+    },
+    "san francisco bay area": {
+      "type": "region",
+      "primary_city": "San Francisco",
+      "state": "California",
+      "country": "US"
+    },
+    "silicon valley": {
+      "type": "region",
+      "primary_city": "San Jose",
+      "state": "California",
+      "country": "US"
+    },
+    "tri-state": {
+      "type": "region",
+      "region_states": [
+        "New York",
+        "New Jersey",
+        "Connecticut"
+      ],
+      "country": "US"
+    },
+    "tri state": {
+      "type": "region",
+      "region_states": [
+        "New York",
+        "New Jersey",
+        "Connecticut"
+      ],
+      "country": "US"
+    },
+    "tristate": {
+      "type": "region",
+      "region_states": [
+        "New York",
+        "New Jersey",
+        "Connecticut"
+      ],
+      "country": "US"
+    },
+    "tri-state area": {
+      "type": "region",
+      "region_states": [
+        "New York",
+        "New Jersey",
+        "Connecticut"
+      ],
+      "country": "US"
+    },
+    "socal": {
+      "type": "region",
+      "primary_city": "Los Angeles",
+      "state": "California",
+      "country": "US"
+    },
+    "so cal": {
+      "type": "region",
+      "primary_city": "Los Angeles",
+      "state": "California",
+      "country": "US"
+    },
+    "southern california": {
+      "type": "region",
+      "primary_city": "Los Angeles",
+      "state": "California",
+      "country": "US"
+    },
+    "norcal": {
+      "type": "region",
+      "primary_city": "San Francisco",
+      "state": "California",
+      "country": "US"
+    },
+    "nor cal": {
+      "type": "region",
+      "primary_city": "San Francisco",
+      "state": "California",
+      "country": "US"
+    },
+    "northern california": {
+      "type": "region",
+      "primary_city": "San Francisco",
+      "state": "California",
+      "country": "US"
+    },
+    "new england": {
+      "type": "region",
+      "region_states": [
+        "Maine",
+        "New Hampshire",
+        "Vermont",
+        "Massachusetts",
+        "Rhode Island",
+        "Connecticut"
+      ],
+      "country": "US"
+    },
+    "the south": {
+      "type": "region",
+      "region_states": [
+        "Texas",
+        "Oklahoma",
+        "Arkansas",
+        "Louisiana",
+        "Mississippi",
+        "Alabama",
+        "Georgia",
+        "Florida",
+        "South Carolina",
+        "North Carolina",
+        "Tennessee",
+        "Kentucky",
+        "Virginia",
+        "West Virginia"
+      ],
+      "country": "US"
+    },
+    "midwest": {
+      "type": "region",
+      "region_states": [
+        "Ohio",
+        "Michigan",
+        "Indiana",
+        "Illinois",
+        "Wisconsin",
+        "Minnesota",
+        "Iowa",
+        "Missouri",
+        "North Dakota",
+        "South Dakota",
+        "Nebraska",
+        "Kansas"
+      ],
+      "country": "US"
+    },
+    "the midwest": {
+      "type": "region",
+      "region_states": [
+        "Ohio",
+        "Michigan",
+        "Indiana",
+        "Illinois",
+        "Wisconsin",
+        "Minnesota",
+        "Iowa",
+        "Missouri",
+        "North Dakota",
+        "South Dakota",
+        "Nebraska",
+        "Kansas"
+      ],
+      "country": "US"
+    },
+    "pacific northwest": {
+      "type": "region",
+      "region_states": [
+        "Washington",
+        "Oregon",
+        "Idaho"
+      ],
+      "country": "US"
+    },
+    "pnw": {
+      "type": "region",
+      "region_states": [
+        "Washington",
+        "Oregon",
+        "Idaho"
+      ],
+      "country": "US"
+    },
+    "research triangle": {
+      "type": "region",
+      "primary_city": "Raleigh",
+      "state": "North Carolina",
+      "country": "US"
+    },
+    "research triangle park": {
+      "type": "region",
+      "primary_city": "Raleigh",
+      "state": "North Carolina",
+      "country": "US"
+    },
+    "rtp": {
+      "type": "region",
+      "primary_city": "Raleigh",
+      "state": "North Carolina",
+      "country": "US"
+    },
+    "medical city dallas": {
+      "type": "region",
+      "primary_city": "Dallas",
+      "state": "Texas",
+      "country": "US"
+    },
+    "texas medical center": {
+      "type": "region",
+      "primary_city": "Houston",
+      "state": "Texas",
+      "country": "US"
+    },
+    "tmc": {
+      "type": "region",
+      "primary_city": "Houston",
+      "state": "Texas",
+      "country": "US"
+    },
+    "greater boston": {
+      "type": "region",
+      "primary_city": "Boston",
+      "state": "Massachusetts",
+      "country": "US"
+    },
+    "greater new york": {
+      "type": "region",
+      "primary_city": "New York City",
+      "state": "New York",
+      "country": "US"
+    },
+    "greater chicago": {
+      "type": "region",
+      "primary_city": "Chicago",
+      "state": "Illinois",
+      "country": "US"
+    },
+    "greater los angeles": {
+      "type": "region",
+      "primary_city": "Los Angeles",
+      "state": "California",
+      "country": "US"
+    },
+    "greater seattle": {
+      "type": "region",
+      "primary_city": "Seattle",
+      "state": "Washington",
+      "country": "US"
+    },
+    "greater miami": {
+      "type": "region",
+      "primary_city": "Miami",
+      "state": "Florida",
+      "country": "US"
+    },
+    "south florida": {
+      "type": "region",
+      "primary_city": "Miami",
+      "state": "Florida",
+      "country": "US"
+    },
+    "greater houston": {
+      "type": "region",
+      "primary_city": "Houston",
+      "state": "Texas",
+      "country": "US"
+    },
+    "greater dallas": {
+      "type": "region",
+      "primary_city": "Dallas",
+      "state": "Texas",
+      "country": "US"
+    },
+    "dfw": {
+      "type": "region",
+      "primary_city": "Dallas",
+      "state": "Texas",
+      "country": "US"
+    },
+    "dallas fort worth": {
+      "type": "region",
+      "primary_city": "Dallas",
+      "state": "Texas",
+      "country": "US"
+    },
+    "greater philadelphia": {
+      "type": "region",
+      "primary_city": "Philadelphia",
+      "state": "Pennsylvania",
+      "country": "US"
+    },
+    "greater atlanta": {
+      "type": "region",
+      "primary_city": "Atlanta",
+      "state": "Georgia",
+      "country": "US"
+    },
+    "greater dc": {
+      "type": "region",
+      "primary_city": "Washington DC",
+      "state": "District of Columbia",
+      "country": "US"
+    },
+    "dmv": {
+      "type": "region",
+      "primary_city": "Washington DC",
+      "state": "District of Columbia",
+      "country": "US"
+    },
+    "dc metro": {
+      "type": "region",
+      "primary_city": "Washington DC",
+      "state": "District of Columbia",
+      "country": "US"
+    },
+    "greater toronto area": {
+      "type": "region",
+      "primary_city": "Toronto",
+      "state": "Ontario",
+      "country": "CA"
+    },
+    "gta": {
+      "type": "region",
+      "primary_city": "Toronto",
+      "state": "Ontario",
+      "country": "CA"
+    },
+    "greater vancouver": {
+      "type": "region",
+      "primary_city": "Vancouver",
+      "state": "British Columbia",
+      "country": "CA"
+    },
+    "east coast": {
+      "type": "region",
+      "region_states": [
+        "Maine",
+        "New Hampshire",
+        "Vermont",
+        "Massachusetts",
+        "Rhode Island",
+        "Connecticut",
+        "New York",
+        "New Jersey",
+        "Delaware",
+        "Maryland",
+        "Virginia",
+        "North Carolina",
+        "South Carolina",
+        "Georgia",
+        "Florida"
+      ],
+      "country": "US"
+    },
+    "west coast": {
+      "type": "region",
+      "region_states": [
+        "Washington",
+        "Oregon",
+        "California"
+      ],
+      "country": "US"
+    },
+    "northeast": {
+      "type": "region",
+      "region_states": [
+        "Maine",
+        "New Hampshire",
+        "Vermont",
+        "Massachusetts",
+        "Rhode Island",
+        "Connecticut",
+        "New York",
+        "New Jersey",
+        "Pennsylvania"
+      ],
+      "country": "US"
+    },
+    "southeastern us": {
+      "type": "region",
+      "region_states": [
+        "Virginia",
+        "North Carolina",
+        "South Carolina",
+        "Georgia",
+        "Florida",
+        "Alabama",
+        "Mississippi",
+        "Tennessee",
+        "Kentucky"
+      ],
+      "country": "US"
+    },
+    "southeast": {
+      "type": "region",
+      "region_states": [
+        "Virginia",
+        "North Carolina",
+        "South Carolina",
+        "Georgia",
+        "Florida",
+        "Alabama",
+        "Mississippi",
+        "Tennessee",
+        "Kentucky"
+      ],
+      "country": "US"
+    },
+    "southwestern us": {
+      "type": "region",
+      "region_states": [
+        "Texas",
+        "New Mexico",
+        "Arizona",
+        "Oklahoma",
+        "Nevada"
+      ],
+      "country": "US"
+    },
+    "southwest": {
+      "type": "region",
+      "region_states": [
+        "Texas",
+        "New Mexico",
+        "Arizona",
+        "Oklahoma",
+        "Nevada"
+      ],
+      "country": "US"
+    },
+    "mid-atlantic": {
+      "type": "region",
+      "region_states": [
+        "New York",
+        "New Jersey",
+        "Pennsylvania",
+        "Delaware",
+        "Maryland",
+        "Virginia",
+        "District of Columbia"
+      ],
+      "country": "US"
+    },
+    "mid atlantic": {
+      "type": "region",
+      "region_states": [
+        "New York",
+        "New Jersey",
+        "Pennsylvania",
+        "Delaware",
+        "Maryland",
+        "Virginia",
+        "District of Columbia"
+      ],
+      "country": "US"
+    },
+    "mountain west": {
+      "type": "region",
+      "region_states": [
+        "Montana",
+        "Idaho",
+        "Wyoming",
+        "Colorado",
+        "Utah",
+        "Nevada",
+        "New Mexico",
+        "Arizona"
+      ],
+      "country": "US"
+    },
+    "deep south": {
+      "type": "region",
+      "region_states": [
+        "Alabama",
+        "Georgia",
+        "Mississippi",
+        "Louisiana",
+        "South Carolina"
+      ],
+      "country": "US"
+    },
+    "great lakes": {
+      "type": "region",
+      "region_states": [
+        "Illinois",
+        "Indiana",
+        "Michigan",
+        "Minnesota",
+        "New York",
+        "Ohio",
+        "Pennsylvania",
+        "Wisconsin"
+      ],
+      "country": "US"
+    },
+    "great plains": {
+      "type": "region",
+      "region_states": [
+        "North Dakota",
+        "South Dakota",
+        "Nebraska",
+        "Kansas",
+        "Minnesota",
+        "Iowa",
+        "Missouri"
+      ],
+      "country": "US"
+    },
+    "upper midwest": {
+      "type": "region",
+      "region_states": [
+        "Minnesota",
+        "Wisconsin",
+        "Michigan",
+        "Iowa",
+        "Illinois"
+      ],
+      "country": "US"
+    },
+    "northwest": {
+      "type": "region",
+      "region_states": [
+        "Washington",
+        "Oregon",
+        "Idaho",
+        "Montana"
+      ],
+      "country": "US"
+    }
+  }
+}
