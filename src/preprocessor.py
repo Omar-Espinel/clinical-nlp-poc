@@ -94,10 +94,12 @@ class Preprocessor:
         r"poison\s+(water\s+supply|food\s+supply|reservoir)",
         r"\bexplosive[s]?\s+(synthesis|making|manufacture)\b",
         r"weapon\s+synthesis",
+        r"(make|build|create|construct|fashion)\s+(an?\s+)?(weapon|bomb|firearm|rifle|pistol|explosive[s]?|\bied\b)",
         # ── Controlled-substance manufacturing ───────────────────────────────────
         r"\bmethamphetamine\b",
         r"manufactur\w*\s+(drug|narcotic|fentanyl|heroin|cocaine)",
         r"synthesiz\w*\s+(drug|narcotic|fentanyl|heroin|cocaine)",
+        r"(cook|make|grow|produce|bake)\s+(meth|methamphetamine|heroin|cocaine|crack|fentanyl|lsd|ecstasy)",
         # ── Child safety ──────────────────────────────────────────────────────────
         r"child\s+exploitation",
         r"human\s+trafficking",
@@ -106,10 +108,16 @@ class Preprocessor:
         r"suicide\s+method",
         r"self[\-\s]harm\s+guide",
         r"how\s+to\s+kill\s+(myself|yourself)",
+        r"how\s+to\s+commit\s+suicide",
+        r"ways\s+to\s+(end|take)\s+(my|your)\s+life",
+        r"how\s+to\s+(hurt|harm|injure)\s+(myself|yourself)",
+        # ── Poison-as-attack-verb ─────────────────────────────────────────────────
+        r"poison\s+(a\s+)?(person|someone|people|victim|target|individual)",
         # ── Cybercrime ────────────────────────────────────────────────────────────
         r"\bransomware\b",
         r"dark\s+web\s+drug",
         r"malware\s+creat\w*",
+        r"(write|create|build|develop|code)\s+(an?\s+)?(malware|ransomware|botnet|exploit)",
     ]
 
     def __init__(self) -> None:

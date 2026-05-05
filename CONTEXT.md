@@ -58,7 +58,7 @@ clinical-nlp-poc/
 ├── .gitignore                    ← Includes .env, __pycache__, chroma_db, etc.
 ├── src/
 │   ├── __init__.py               ← Empty
-│   ├── preprocessor.py           ← Input validation, injection/harmful content detection (~161 lines)
+│   ├── preprocessor.py           ← Input validation, injection/harmful content detection (~168 lines)
 │   ├── extractor.py              ← Groq LLM call + JSON parsing (275 lines)
 │   ├── snomed_resolver.py        ← 4-step SNOMED matching cascade (372 lines)
 │   ├── geo_normalizer.py         ← City/state/region normalization (166 lines)
@@ -134,7 +134,7 @@ User query (raw string)
 ┌─────────────────────────────────────────────────────┐
 │ src/preprocessor.py :: Preprocessor.process()        │
 │  • Length check (3–500 chars)                        │
-│  • ~70 regex patterns (injection, harmful content)   │
+│  • ~77 regex patterns (injection, harmful content)   │
 │  → PreprocessedInput(text, original, char_count)    │
 └─────────────────────┬───────────────────────────────┘
                       │
@@ -231,7 +231,7 @@ NLPOutput
 
 Blocks:
 - Queries shorter than 3 or longer than 500 characters
-- ~70 regex patterns in 10 groups: prompt injection, code/script injection, data exfiltration, social engineering, LLM special tokens ([INST]/<<SYS>>), template/SSTI injection, HTTP header injection, XML tag injection, path traversal (Unix + Windows), SQL injection, WMD/weapon synthesis, controlled-substance manufacturing, child safety violations, self-harm guides, cybercrime
+- ~77 regex patterns in 10 groups: prompt injection, code/script injection, data exfiltration, social engineering, LLM special tokens ([INST]/<<SYS>>), template/SSTI injection, HTTP header injection, XML tag injection, path traversal (Unix + Windows), SQL injection, WMD/weapon synthesis (including verb-noun attacks: make/build/create + weapon/bomb/firearm), controlled-substance manufacturing (including cook/make/grow + drug nouns), child safety violations, self-harm guides (including how to commit suicide, ways to end my/your life), poison-as-attack-verb, cybercrime (including write/create/develop + malware/exploit)
 - Null bytes (`\x00`) stripped as the first step in `process()`, before length check and injection check
 - SYSTEM prefix pattern (`\ASYSTEM`) compiled separately to anchor at absolute string start
 - Raises `PreprocessorError` with user-safe messages (no internal details)
@@ -638,3 +638,15 @@ Driven by 1004-case batch evaluation identifying 86 non-SNOMED-coverage failures
 - `snomed_matches` now sorted by confidence descending BEFORE the main loop in `assemble()`, ensuring the highest-confidence match wins deduplication
 - After the loop and before geo integration: deduplicate `included` by SNOMED code using a `seen_codes` set, keeping first (highest-confidence) occurrence per code
 - `metadata.total_snomed_matches` correctly reflects unique codes after deduplication
+
+### Verb-noun attack pattern coverage (2026-05-05)
+Gap identified: all prior harmful content patterns were noun compounds (e.g. `weapon synthesis`, `chemical weapon`). Queries pairing a harmful *action verb* with a weapon/drug/person noun bypassed all patterns (e.g. "diabetes studies and how to make weapons").
+
+**7 new patterns added to `_INJECTION_PATTERNS` in `src/preprocessor.py`** (total now ~77):
+- `(make|build|create|construct|fashion) + (weapon|bomb|firearm|rifle|pistol|explosive|ied)` — closes verb-noun weapon gap
+- `(cook|make|grow|produce|bake) + (meth|methamphetamine|heroin|cocaine|crack|fentanyl|lsd|ecstasy)` — closes drug production verb gap (`manufactur*`/`synthesiz*` were already covered)
+- `how to commit suicide` — extends self-harm coverage beyond `suicide method` / `how to kill myself`
+- `ways to (end|take) (my|your) life` — additional self-harm instructional phrase
+- `how to (hurt|harm|injure) (myself|yourself)` — self-harm verb variant
+- `poison + (person|someone|people|victim|target|individual)` — closes poison-as-attack-verb gap (existing pattern only covered `poison water/food supply`)
+- `(write|create|build|develop|code) + (malware|ransomware|botnet|exploit)` — closes cybercrime verb gap; `virus` deliberately excluded to avoid blocking HIV/influenza/viral vector clinical terms
