@@ -63,6 +63,9 @@ class NLPOutput(BaseModel):
     metadata: MetadataOutput
 
 
+_INVALID_STATE_VALUES = frozenset({"null", "none", "n/a", "na", "unknown", ""})
+
+
 class ResponseAssembler:
     """Assembles the final NLPOutput from all pipeline component results."""
 
@@ -86,6 +89,8 @@ class ResponseAssembler:
         negated_excluded = 0
         match_type_counts: dict[str, int] = {}
 
+        snomed_matches = sorted(snomed_matches, key=lambda m: m.confidence, reverse=True)
+
         for match in snomed_matches:
             if match.negated:
                 negated_excluded += 1
@@ -104,6 +109,14 @@ class ResponseAssembler:
             )
             match_type_counts[match.match_type] = match_type_counts.get(match.match_type, 0) + 1
 
+        seen_codes: set[str] = set()
+        deduped: list[SNOMEDTermOutput] = []
+        for term in included:
+            if term.code not in seen_codes:
+                seen_codes.add(term.code)
+                deduped.append(term)
+        included = deduped
+
         # Geo integration
         if geo.confidence >= self.MIN_CONFIDENCE:
             city_value = geo.city
@@ -114,7 +127,11 @@ class ResponseAssembler:
         else:
             city_value = extraction.city.value
             city_conf = extraction.city.confidence
-            state_values = [extraction.state.value] if extraction.state.value else []
+            raw_state = extraction.state.value
+            if raw_state and raw_state.strip().lower() not in _INVALID_STATE_VALUES:
+                state_values = [raw_state]
+            else:
+                state_values = []
             state_conf = extraction.state.confidence
             state_is_region = False
 
