@@ -43,25 +43,19 @@ class Preprocessor:
         r"\}\}",
         r"<!--",
         # ── Data exfiltration attempts ────────────────────────────────────
-        # "show/tell/get/list everything"
         r"show\s+me\s+everything",
         r"tell\s+me\s+everything",
         r"get\s+me\s+everything",
         r"list\s+everything",
         r"give\s+me\s+everything",
-        # "give/show/return/fetch me all <data noun>"
         r"give\s+me\s+all\s+(results|data|records|information|entries|everything)",
         r"show\s+me\s+all\s+(results|data|records|information|entries|everything)",
         r"return\s+all\s+(results|data|records|information|entries)",
         r"fetch\s+all\s+(results|data|records|information|entries)",
-        # "dump / export all"
         r"(dump|export)\s+(all|every)",
-        # "all your data / your database"
         r"all\s+your\s+(data|records|information|results|entries)",
         r"your\s+(database|records|data|index|knowledge)",
-        # "what data do you have / are you storing"
         r"what\s+(data|information)\s+(do\s+you\s+have|have\s+you\s+stored|are\s+you\s+storing)",
-        # "reveal all"
         r"reveal\s+(all|everything|your)",
         # ── Social engineering ────────────────────────────────────────────
         r"pretend\s+(you\s+are|to\s+be)",
@@ -70,12 +64,61 @@ class Preprocessor:
         r"as\s+a\s+(different|new)\s+(ai|model|assistant|system)",
         r"bypass",
         r"override\s+(your\s+)?(rules|instructions|guidelines|safety)",
+        # ── LLM special tokens ────────────────────────────────────────────────────
+        r"\[\s*/?INST\s*\]",
+        r"<<SYS>>",
+        r"<</SYS>>",
+        # ── Template / SSTI injection ─────────────────────────────────────────────
+        r"\$\{[^}]*\}",
+        # ── Code eval ─────────────────────────────────────────────────────────────
+        r"\beval\s*\(",
+        # ── HTTP header injection ─────────────────────────────────────────────────
+        r"%0[ad]",
+        # ── XML / tag injection ───────────────────────────────────────────────────
+        r"</\w+\s*>",
+        r"<\w+\s*/>",
+        r"<return\b",
+        # ── Path traversal (Unix and Windows) ─────────────────────────────────────
+        r"\.\.[\\/]",
+        # ── SQL injection additions ───────────────────────────────────────────────
+        r"\bAND\s+1\s*=\s*1\b",
+        r"\bOR\s+1\s*=\s*1\b",
+        r"\bSLEEP\s*\(\s*\d+\s*\)",
+        r"\bUNION\s+SELECT\b",
+        # ── Harmful content / WMD ────────────────────────────────────────────────
+        r"nerve\s+agent",
+        r"\bsarin\b",
+        r"bioweapon",
+        r"dirty\s+bomb",
+        r"chemical\s+weapon",
+        r"poison\s+(water\s+supply|food\s+supply|reservoir)",
+        r"\bexplosive[s]?\s+(synthesis|making|manufacture)\b",
+        r"weapon\s+synthesis",
+        # ── Controlled-substance manufacturing ───────────────────────────────────
+        r"\bmethamphetamine\b",
+        r"manufactur\w*\s+(drug|narcotic|fentanyl|heroin|cocaine)",
+        r"synthesiz\w*\s+(drug|narcotic|fentanyl|heroin|cocaine)",
+        # ── Child safety ──────────────────────────────────────────────────────────
+        r"child\s+exploitation",
+        r"human\s+trafficking",
+        r"child\s+abuse\s+material",
+        # ── Self-harm ─────────────────────────────────────────────────────────────
+        r"suicide\s+method",
+        r"self[\-\s]harm\s+guide",
+        r"how\s+to\s+kill\s+(myself|yourself)",
+        # ── Cybercrime ────────────────────────────────────────────────────────────
+        r"\bransomware\b",
+        r"dark\s+web\s+drug",
+        r"malware\s+creat\w*",
     ]
 
     def __init__(self) -> None:
         self._compiled_patterns = [
             re.compile(p, re.IGNORECASE) for p in self._INJECTION_PATTERNS
         ]
+        self._compiled_patterns.append(
+            re.compile(r"\ASYSTEM\s*[:\n]", re.IGNORECASE)
+        )
 
     def process(self, raw_input: str) -> PreprocessedInput:
         """Validate and sanitize a raw query string.
@@ -83,6 +126,7 @@ class Preprocessor:
         Raises PreprocessorError if the input is too short, too long,
         or contains injection/exfiltration patterns.
         """
+        raw_input = raw_input.replace("\x00", "")
         self._validate_length(raw_input)
         if self._check_injection(raw_input):
             raise PreprocessorError("Invalid query detected")
@@ -95,6 +139,7 @@ class Preprocessor:
 
     def _sanitize(self, text: str) -> str:
         """Strip leading/trailing whitespace and collapse internal whitespace."""
+        text = text.replace("\x00", "")
         text = text.strip()
         text = re.sub(r"\s+", " ", text)
         return text

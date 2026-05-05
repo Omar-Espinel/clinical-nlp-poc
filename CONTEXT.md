@@ -58,7 +58,7 @@ clinical-nlp-poc/
 ├── .gitignore                    ← Includes .env, __pycache__, chroma_db, etc.
 ├── src/
 │   ├── __init__.py               ← Empty
-│   ├── preprocessor.py           ← Input validation + injection/exfiltration detection (115 lines)
+│   ├── preprocessor.py           ← Input validation, injection/harmful content detection (~161 lines)
 │   ├── extractor.py              ← Groq LLM call + JSON parsing (275 lines)
 │   ├── snomed_resolver.py        ← 4-step SNOMED matching cascade (372 lines)
 │   ├── geo_normalizer.py         ← City/state/region normalization (166 lines)
@@ -134,7 +134,7 @@ User query (raw string)
 ┌─────────────────────────────────────────────────────┐
 │ src/preprocessor.py :: Preprocessor.process()        │
 │  • Length check (3–500 chars)                        │
-│  • 35 injection/exfiltration regex patterns          │
+│  • ~70 regex patterns (injection, harmful content)   │
 │  → PreprocessedInput(text, original, char_count)    │
 └─────────────────────┬───────────────────────────────┘
                       │
@@ -231,7 +231,9 @@ NLPOutput
 
 Blocks:
 - Queries shorter than 3 or longer than 500 characters
-- 35 regex patterns grouped as: prompt injection, code/script injection, data exfiltration ("give me all results", "show me everything", "dump all", etc.), social engineering ("pretend you are", "bypass", "override your rules")
+- ~70 regex patterns in 10 groups: prompt injection, code/script injection, data exfiltration, social engineering, LLM special tokens ([INST]/<<SYS>>), template/SSTI injection, HTTP header injection, XML tag injection, path traversal (Unix + Windows), SQL injection, WMD/weapon synthesis, controlled-substance manufacturing, child safety violations, self-harm guides, cybercrime
+- Null bytes (`\x00`) stripped as the first step in `process()`, before length check and injection check
+- SYSTEM prefix pattern (`\ASYSTEM`) compiled separately to anchor at absolute string start
 - Raises `PreprocessorError` with user-safe messages (no internal details)
 
 Error messages (exact strings, tests may depend on these):
@@ -315,9 +317,11 @@ State input: if provided, looked up via abbreviation or full name. For non-regio
 **Class:** `ResponseAssembler`
 **Key method:** `assemble(...) -> NLPOutput`
 
+- Sorts `snomed_matches` by confidence descending before processing
 - Excludes negated SNOMED matches from `snomed_terms` (counts them in `negated_terms_excluded`)
+- Deduplicates `snomed_terms` by SNOMED code, keeping the highest-confidence match per code
 - Applies geo values if `geo.confidence >= 0.60`, otherwise falls back to raw LLM-extracted values
-- State fallback wraps the single extracted state in a list: `[extraction.state.value]`
+- State fallback validates against `_INVALID_STATE_VALUES` frozenset before wrapping in list — prevents literal `"null"` string from leaking into `StateFilterOutput`
 - All output models are Pydantic V2 with `frozen=True`
 
 ---
@@ -423,7 +427,7 @@ Key behaviors:
 
 ### What's implemented
 1. **Two-layer input defense:**
-   - Layer 1 (preprocessor): 35 regex patterns block prompt injection, SQL injection, script injection, data exfiltration phrases, social engineering
+   - Layer 1 (preprocessor): ~70 regex patterns block prompt injection, SQL injection, script injection, data exfiltration phrases, social engineering, LLM token injection, template/SSTI injection, path traversal, XML injection, HTTP header injection, WMD/weapon synthesis queries, controlled-substance manufacturing, child safety violations, self-harm guides, and cybercrime. Null bytes stripped before any check; SYSTEM prefix blocked at absolute string start.
    - Layer 2 (pipeline): clinical intent validation — rejects queries with 0 medical terms AND 0 filters after LLM extraction
 2. **Log hygiene (HIPAA):** Query text is never logged. Extracted filter values are never logged. Only counts, lengths, confidence scores, and SNOMED codes logged.
 3. **Error message sanitization:** All user-facing error messages are generic. Internal error details never reach the UI.
@@ -608,3 +612,29 @@ tests/batch_eval.py → src/pipeline.py (same path as app.py)
 ### Batch evaluation framework
 - `tests/batch_eval.py`: Full batch runner with per-case results, SNOMED precision/recall, per-filter accuracy, per-category breakdown, timing stats; writes timestamped CSV to `tests/results/`
 - `tests/batch_test_cases.csv`: 100 test cases covering all categories
+
+### Security hardening & pipeline correctness (2026-05-05)
+Driven by 1004-case batch evaluation identifying 86 non-SNOMED-coverage failures. Changes reviewed and approved by Architect → QA → Security before implementation.
+
+**P1 — Harmful content blocking (`src/preprocessor.py`)**
+- Added 22 new patterns to `_INJECTION_PATTERNS` covering: WMD/weapon synthesis (`nerve agent`, `sarin`, `bioweapon`, `dirty bomb`, `chemical weapon`, explosive synthesis, weapon synthesis), controlled-substance manufacturing (`methamphetamine`, `manufactur*`/`synthesiz*` + drug nouns), child safety (`child exploitation`, `human trafficking`, `child abuse material`), self-harm (`suicide method`, `self-harm guide`, `how to kill myself/yourself`), cybercrime (`ransomware`, `dark web drug`, `malware creat*`)
+- Attack vector blocked: queries pairing harmful content with a valid clinical term via AND (e.g. "synthesize nerve agent AND heart failure phase 3") — the preprocessor now catches these before the LLM call
+
+**P1 — Injection pattern hardening (`src/preprocessor.py`)**
+- Added 15 new injection patterns: LLM special tokens (`[\s*/?INST\s*]` with whitespace tolerance, `<<SYS>>`, `<</SYS>>`), template/SSTI (`${...}`), code eval (`eval(`), HTTP header injection (`%0a`/`%0d` URL-encoded newlines), XML closing tags (`</tag\s*>`), self-closing tags, path traversal (`\.\.[\\/]` — catches both Unix `../` and Windows `..\`), SQL tautologies (`AND 1=1`, `OR 1=1`, `SLEEP(N)`, `UNION SELECT`)
+- Added SYSTEM prefix pattern (`\ASYSTEM\s*[:\n]`) compiled separately with `re.IGNORECASE` using `\A` absolute-start anchor (not `^` with MULTILINE)
+- Null bytes (`\x00`) stripped as the VERY FIRST step in `process()`, before `_validate_length` and before injection check; also stripped in `_sanitize()` as belt-and-suspenders
+- Residual accepted risk (POC): leet speak substitution, unicode homoglyphs, heavily-spaced characters
+
+**P2 — Null string state leak fix (`src/assembler.py`)**
+- Added module-level `_INVALID_STATE_VALUES = frozenset({"null", "none", "n/a", "na", "unknown", ""})` before `ResponseAssembler`
+- In `assemble()` geo fallback branch: replaced `state_values = [extraction.state.value] if extraction.state.value else []` with a guard that checks `raw_state.strip().lower() not in _INVALID_STATE_VALUES`, preventing the literal string `"null"` (returned by the LLM instead of JSON null) from appearing as `state: ['null']` in output
+
+**P3 — Kansas City state disambiguation + site-name state extraction (`src/extractor.py`)**
+- Root cause confirmed: `geo_canonical.json` correctly mapped "kansas city" → Missouri; the bug was the LLM extracting "Kansas" from the city name, then the geo_normalizer's "explicit state always wins" rule overriding the correct Missouri
+- Fixed in `SYSTEM_PROMPT` rule 6: added IMPORTANT block instructing the LLM to extract state ONLY from explicit state mentions, not from city names ("Kansas City" ≠ Kansas, "Oklahoma City" ≠ Oklahoma, "New York" city ≠ New York state) and not from institution names ("Massachusetts General Hospital" does not imply state=Massachusetts when a different city is specified)
+
+**P4 — Duplicate SNOMED codes (`src/assembler.py`)**
+- `snomed_matches` now sorted by confidence descending BEFORE the main loop in `assemble()`, ensuring the highest-confidence match wins deduplication
+- After the loop and before geo integration: deduplicate `included` by SNOMED code using a `seen_codes` set, keeping first (highest-confidence) occurrence per code
+- `metadata.total_snomed_matches` correctly reflects unique codes after deduplication

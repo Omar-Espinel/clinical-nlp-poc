@@ -24,3 +24,5 @@ htmlcov/
 *.mo
 *.pot
 *.orig
+results-review.md
+test_results.md

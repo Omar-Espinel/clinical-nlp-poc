@@ -13,7 +13,7 @@ pinned: false
 
 A natural language processing tool for clinical researchers to extract structured information from free-text queries about clinical trials. Given a plain-English query, the system identifies SNOMED CT medical concepts with confidence scores and extracts structured filters including investigator name, site name, city, state, and study phase.
 
-The system uses a Groq-powered LLM (llama-3.1-8b-instant) to parse natural language, then validates and enriches extracted terms through a 4-step SNOMED matching cascade: exact match, synonym/alias lookup, fuzzy matching via rapidfuzz, and semantic vector search via ChromaDB with sentence-transformers embeddings. Geography is normalized against a curated US + Canada city/state/region database.
+The system uses a Groq-powered LLM (llama-3.1-8b-instant) to parse natural language, then validates and enriches extracted terms through a 4-step SNOMED matching cascade: exact match, synonym/alias lookup, fuzzy matching via rapidfuzz, and semantic vector search via ChromaDB with sentence-transformers embeddings. Geography is normalized against a curated US + Canada city/state/region database. Queries are pre-screened by a multi-pattern security layer (~70 regex patterns) that blocks injection attacks, harmful content, and prompt manipulation before any LLM call.
 
 ## Example Queries to Try
 
@@ -76,7 +76,7 @@ Free tier: up to 30 requests/minute, 500/day.
 ```
 app.py (Streamlit UI)
   └── src/pipeline.py (NLPPipeline)
-        ├── src/preprocessor.py   — input sanitization & injection detection
+        ├── src/preprocessor.py   — input sanitization, injection detection & harmful content blocking (~70 patterns)
         ├── src/extractor.py      — Groq LLM term + filter extraction
         ├── src/snomed_resolver.py — 4-step SNOMED matching cascade
         │     ├── exact match (preferred_term lookup)

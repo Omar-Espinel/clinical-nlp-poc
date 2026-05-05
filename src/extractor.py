@@ -72,6 +72,19 @@ EXTRACTION RULES:
 5. Cities: extract raw text only. Do not normalize.
 
 6. States: extract raw text only, including abbreviations.
+   IMPORTANT: Extract state ONLY from an explicit state mention in the query.
+   Do NOT derive or infer state from a city name or institution name.
+   "Kansas City" does NOT imply state=Kansas — return null unless the query
+   explicitly names a state (e.g. "Kansas City, Kansas" or "Kansas City KS").
+   "Oklahoma City" does NOT imply state=Oklahoma — return null unless stated.
+   "New York" as a standalone city does NOT imply state=New York — return null
+   unless the query says "New York, NY" or "New York state".
+   Do NOT extract state from an institution or site name.
+   "Massachusetts General Hospital" does NOT imply state=Massachusetts if the
+   query names a different city — city=Baltimore, state=null unless "Maryland"
+   or "MD" is explicitly stated.
+   The state field must reflect the physical location in the query, not any
+   institution's well-known home state.
 
 7. Phase normalization:
    "phase 3", "p3", "phase iii", "phase-3" → "Phase 3"
