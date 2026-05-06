@@ -31,3 +31,6 @@ flow-diagram.png
 gen_block_diagram.py
 gen_flow_diagram.py
 .claude/settings.local.json
+modified-proposal.md
+README response.md
+response-branch-spec.md
