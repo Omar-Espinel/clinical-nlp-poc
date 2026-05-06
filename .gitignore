@@ -26,3 +26,8 @@ htmlcov/
 *.orig
 results-review.md
 test_results.md
+block-diagram.png
+flow-diagram.png
+gen_block_diagram.py
+gen_flow_diagram.py
+.claude/settings.local.json
