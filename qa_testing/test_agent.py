@@ -51,8 +51,8 @@ from src.extractor import ExtractionError
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 FUZZY_THRESHOLD    = 88
-DEFAULT_INPUT      = ROOT / "test_cases_202.json"
-DEFAULT_OUTPUT_DIR = ROOT /  "results"
+DEFAULT_INPUT      = ROOT / qa_testing / "test_cases_202.json"
+DEFAULT_OUTPUT_DIR = ROOT / qa_testing /  "results"
 DEFAULT_RPM        = 25      # safe under Groq's 30 req/min free tier limit
 MAX_RETRIES        = 3       # retries on rate limit before marking as RATE_LIMITED
 
