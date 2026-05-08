@@ -1,7 +1,7 @@
 # Clinical Research NLP — Project Context
 
-## Status: ACTIVE / COMPLETE INITIAL BUILD
-## Last Updated: 2026-05-04
+## Status: ACTIVE / COMPLETE INITIAL BUILD · Rework spec drafted
+## Last Updated: 2026-05-06
 ## Platform: Python 3.13 · Windows 11 · Streamlit
 
 ---
@@ -67,11 +67,17 @@ clinical-nlp-poc/
 ├── data/
 │   ├── snomed_clinical_trials.csv ← 116 SNOMED concepts with synonyms
 │   └── geo_canonical.json         ← 200+ cities, all US states + CA provinces, 59 regions
-└── tests/
-    ├── test_cases.json           ← 20 structured regression tests
-    ├── run_tests.py              ← Regression test runner (exit 0 if ≥15 pass)
-    ├── batch_test_cases.csv      ← 100 evaluation scenarios (edit to customize)
-    └── batch_eval.py             ← Batch runner: outputs metrics CSV + summary table (343 lines)
+├── tests/
+│   ├── test_cases.json           ← 20 structured regression tests
+│   ├── run_tests.py              ← Regression test runner (exit 0 if ≥15 pass)
+│   ├── batch_test_cases.csv      ← 100 evaluation scenarios (edit to customize)
+│   └── batch_eval.py             ← Batch runner: outputs metrics CSV + summary table (343 lines)
+├── qa_testing/                    ← QA-driven test agent + large case sets (added 2026-05-06)
+│   ├── test_agent.py             ← Rate-limited test runner with markdown report (497 lines)
+│   ├── test_cases_202.json       ← 202-case curated test set (default input)
+│   └── test_cases_1000.json      ← 1000-case extended test set
+├── rework-nlp-proposal.md         ← Architectural proposal for v2 pipeline (added 2026-05-06)
+└── rework-nlp-impl-spec.md        ← Pseudocode implementation spec for v2 (added 2026-05-06)
 ```
 
 ---
@@ -97,6 +103,12 @@ python tests/run_tests.py
 python tests/batch_eval.py
 python tests/batch_eval.py --limit 10     # quick smoke test
 python tests/batch_eval.py --input tests/batch_test_cases.csv --output tests/results/
+
+# Run the QA test agent (202-case default, rate-limited for Groq free tier)
+python qa_testing/test_agent.py
+python qa_testing/test_agent.py --limit 20            # smoke test
+python qa_testing/test_agent.py --category injection  # single category
+python qa_testing/test_agent.py --input qa_testing/test_cases_1000.json
 ```
 
 ---
@@ -421,6 +433,16 @@ Key behaviors:
 - Prints terminal summary: overall pass rate, per-category breakdown, per-filter accuracy bars, SNOMED recall, avg/min/max processing time
 - Use `--limit N` for quick smoke test
 
+### qa_testing/test_agent.py (QA test agent)
+- Reads JSON test cases (default `qa_testing/test_cases_202.json`; 1000-case set also available)
+- Case schema: `id`, `input`, `category`, `description`, `expected.snomed_codes`, `expected.filters.{city,state,phase}`, `expected.should_reject`
+- Categories handled: `valid`, `injection`, `harmful`, `edge_case`, `missing_condition`, `invalid_nonsense` — categories in `NO_API_CATEGORIES = {"injection", "harmful", "edge_case"}` are expected to be blocked by the preprocessor and never hit the Groq API
+- **Rate-limit strategy** for Groq free tier (30 req/min, 500 req/day): no-API categories run first and instantly; API-needing cases throttled by token-bucket `RateLimiter` to `--rpm` (default 25); on 429 → exponential backoff up to 60s for `MAX_RETRIES=3` attempts, then case marked `RATE_LIMITED` (skipped, not failed)
+- Filter comparison: `rapidfuzz.token_sort_ratio` ≥ 88; state checked via membership in `state.values` list
+- SNOMED comparison: actual codes deduped before checking expected codes are all present (handles P4 duplicate-code semantics)
+- Writes a `results.md` markdown report per run with summary metrics, failed cases, and rate-limited cases
+- Flags: `--input`, `--limit`, `--category`, `--output`, `--rpm`
+
 ---
 
 ## Security & HIPAA Considerations
@@ -650,3 +672,19 @@ Gap identified: all prior harmful content patterns were noun compounds (e.g. `we
 - `how to (hurt|harm|injure) (myself|yourself)` — self-harm verb variant
 - `poison + (person|someone|people|victim|target|individual)` — closes poison-as-attack-verb gap (existing pattern only covered `poison water/food supply`)
 - `(write|create|build|develop|code) + (malware|ransomware|botnet|exploit)` — closes cybercrime verb gap; `virus` deliberately excluded to avoid blocking HIV/influenza/viral vector clinical terms
+
+### QA test agent + extended case sets (2026-05-06)
+New `qa_testing/` directory introduces a rate-limit-aware test runner separate from the existing `tests/` suite.
+
+- `qa_testing/test_agent.py` — runs JSON test cases against `NLPPipeline`, throttles API calls to stay under Groq's 30 req/min free-tier limit, retries on 429 with exponential backoff up to 60s, marks cases `RATE_LIMITED` (skipped) rather than failing them after `MAX_RETRIES=3`. Runs no-API categories (`injection`, `harmful`, `edge_case`) first and instantly. Writes a markdown `results.md` per run.
+- `qa_testing/test_cases_202.json` — 202 curated cases, default input
+- `qa_testing/test_cases_1000.json` — 1000 cases for extended evaluation
+- Case schema is JSON (not CSV like `batch_test_cases.csv`): each case has `expected.snomed_codes` (list), `expected.filters.{city,state,phase}`, and `expected.should_reject` (bool) for cases the preprocessor must block.
+
+### Rework design docs (2026-05-06)
+Two architectural specs added at the repo root for a planned v2 of the pipeline. Neither document changes the current implementation — they are forward-looking design only.
+
+- `rework-nlp-proposal.md` — architectural proposal (revision 2, post adversarial QA + Security review). Key proposed changes: pre-extraction `SufficiencyGate` over the raw query (deterministic registry lookup) so insufficient queries cost zero LLM tokens; LLM extracts **filters only** (no SNOMED); SNOMED becomes a pluggable strategy behind a `SNOMEDSearchStrategy` Protocol (Aho-Corasick / n-gram / hybrid candidates); `LLMProvider` abstraction to remove Groq lock-in; NegEx-style algorithmic negation; parallel filter-extraction + SNOMED via `ThreadPoolExecutor`; multi-turn clarification capped at 3 turns; output becomes a discriminated union `NLPOutput | ClarificationOutput`. `state.values: list[str]` schema is preserved.
+- `rework-nlp-impl-spec.md` — pseudocode-level implementation spec for the proposal (1949 lines). Defines `AmbiguousTermsRegistry`, `AmbiguousEntry`, `SufficiencyGate`, and the `data/ambiguous_terms.json` artifact. Pydantic V2, `frozen=True`, with strict-vs-graceful validation modes for rolling deploys.
+
+**When implementing the rework**, treat `rework-nlp-proposal.md` as authoritative; `rework-nlp-impl-spec.md` deepens it with file paths, imports, constants, and class signatures. Look for `# OBSOLETE-AT-SCALE: <reason>` markers as the cleanup convention.
