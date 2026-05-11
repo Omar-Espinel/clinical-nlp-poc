@@ -12,8 +12,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import sys
+from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
@@ -37,8 +39,214 @@ AMBIG_JSON_MIN_OPTIONS = 3
 AMBIG_JSON_MAX_OPTIONS = 5
 OPTION_MIN_CONFIDENCE = 0.85  # every option in ambiguous_terms.json must resolve here
 
+# Layer 1 — auto-derived trigger constants
+MIN_DERIVED_TOKEN_LEN = 4
+MIN_DERIVED_TERM_FREQUENCY = 2  # token must appear in >= 2 distinct preferred_terms
+
+_ANATOMY_STOPWORDS: frozenset[str] = frozenset({
+    "malignant", "neoplasm", "disease", "disorder", "syndrome",
+    "carcinoma", "adenocarcinoma", "sarcoma", "infarction", "failure",
+    "infection", "deficiency", "insufficiency", "procedure", "therapy",
+    "treatment", "measurement", "monitoring", "imaging", "acute",
+    "chronic", "primary", "secondary", "idiopathic", "congenital",
+    "type", "cell", "small", "large", "mixed", "multiple", "lateral",
+    "diffuse", "bilateral", "unilateral", "stage", "grade", "level",
+    "blood", "arterial", "venous", "systemic", "peripheral",
+    "obstructive", "restrictive", "progressive", "benign", "solid",
+    "squamous", "gland", "vessel", "node", "tissue", "junction",
+    "uteri", "mellitus", "erythematosus", "spondylitis",
+    "human",  # "human" in "human immunodeficiency virus infection"
+})
+
+# Layer 2 — embedding ambiguity gate constants
+# LAYER2_HIGH_THRESHOLD removed — use MIN_CONFIDENCE (= 0.60) from assembler.py
+LAYER2_LOW_THRESHOLD = 0.42        # floor for "plausible but uncertain" embeddings
+LAYER2_MIN_NEIGHBORS = 3           # genuine ambiguity requires >= 3 mid-band options
+LAYER2_MIN_GENUINE_AMBIG = 3       # at least 3 competing high-conf matches
+LAYER2_SPREAD_THRESHOLD = 0.08  # max - min confidence spread for Signal B
+
 # Canonical CSV path relative to this file
 _SNOMED_CSV_DEFAULT = Path(__file__).parent.parent / "data" / "snomed_clinical_trials.csv"
+
+
+# ---------------------------------------------------------------------------
+# Layer 1 module-level helpers (auto-derived triggers)
+# ---------------------------------------------------------------------------
+
+def _extract_anatomy_tokens(preferred_terms: list[str]) -> dict[str, list[str]]:
+    """Scan a list of lowercase preferred_terms and return a mapping of
+    {token: [preferred_term_1, preferred_term_2, ...]} for tokens that pass
+    the length gate and are not in _ANATOMY_STOPWORDS.
+
+    Used by _build_derived_entries to identify candidate trigger tokens.
+    HIPAA: token text NOT logged.
+    """
+    token_to_terms: dict[str, list[str]] = defaultdict(list)
+    for preferred_term in preferred_terms:
+        raw_tokens = re.findall(r'\S+', preferred_term)
+        seen_in_this_term: set[str] = set()
+        for raw_tok in raw_tokens:
+            token_lower = raw_tok.lower().strip(".,;:'\"")
+            if len(token_lower) < MIN_DERIVED_TOKEN_LEN:
+                continue
+            if token_lower in _ANATOMY_STOPWORDS:
+                continue
+            if token_lower in seen_in_this_term:
+                continue
+            seen_in_this_term.add(token_lower)
+            token_to_terms[token_lower].append(preferred_term)
+    return dict(token_to_terms)
+
+
+def _select_derived_options(
+    matching_terms: list[str],
+    max_options: int = AMBIG_JSON_MAX_OPTIONS,
+) -> list[str]:
+    """From a list of source preferred_terms, select up to max_options display strings.
+
+    Selection: shortest preferred_terms first; lexicographic tiebreak; cap at max_options.
+    Returns RAW CSV values (lowercase as stored). NO .title() call (B4).
+    Returns [] if fewer than AMBIG_JSON_MIN_OPTIONS source terms.
+    """
+    if len(matching_terms) < AMBIG_JSON_MIN_OPTIONS:
+        return []
+    sorted_terms = sorted(matching_terms, key=lambda t: (len(t), t))
+    return sorted_terms[:max_options]
+
+
+def _build_derived_entries(csv_path: Path) -> dict[str, "AmbiguousEntry"]:
+    """Scan preferred_terms in the SNOMED CSV; derive AmbiguousEntry objects for anatomy/
+    system tokens that appear in >= MIN_DERIVED_TERM_FREQUENCY distinct preferred_terms.
+
+    Options are the source preferred_terms themselves (guaranteed 0.99 exact match).
+    Does NOT call the SNOMED strategy for validation (options are CSV preferred_terms).
+    Returns {} on any failure (caller wraps in try/except for graceful degrade).
+
+    HIPAA: token text and option strings NOT logged.
+    """
+    df = pd.read_csv(csv_path, dtype=str).fillna("")
+    # Deduplicate by preferred_term text to avoid double-counting concept_id duplicates
+    unique_terms: list[str] = (
+        df["preferred_term"].str.strip().str.lower().drop_duplicates().tolist()
+    )
+
+    # Step 1: extract candidate tokens → source preferred_terms mapping
+    token_to_terms = _extract_anatomy_tokens(unique_terms)
+
+    # Step 2: apply frequency threshold
+    qualified: dict[str, list[str]] = {
+        token: sources
+        for token, sources in token_to_terms.items()
+        if len(sources) >= MIN_DERIVED_TERM_FREQUENCY
+    }
+
+    # Build a flat set of all synonyms containing each token for override derivation.
+    # This ensures compound terms like "lung cancer" (a synonym) suppress the derived
+    # "lung" trigger — matching the same suppression logic as _derive_overrides.
+    trigger_pattern_cache: dict[str, re.Pattern] = {}
+
+    def _get_synonyms_containing(token: str) -> set[str]:
+        """Return all CSV synonyms that contain token as a whole word (lowercase)."""
+        if token not in trigger_pattern_cache:
+            trigger_pattern_cache[token] = re.compile(
+                rf"\b{re.escape(token)}\b", re.IGNORECASE
+            )
+        pat = trigger_pattern_cache[token]
+        result: set[str] = set()
+        for _, row in df.iterrows():
+            for syn in row["synonyms"].split("|"):
+                syn_clean = syn.strip().lower()
+                if syn_clean and pat.search(syn_clean):
+                    result.add(syn_clean)
+        return result
+
+    # Step 3: build AmbiguousEntry per qualified token
+    derived: dict[str, AmbiguousEntry] = {}
+    for token, source_terms in qualified.items():
+        options = _select_derived_options(source_terms, max_options=AMBIG_JSON_MAX_OPTIONS)
+        if len(options) < AMBIG_JSON_MIN_OPTIONS:
+            logger.info(
+                "derived trigger skipped: too few options (count=%d token_len=%d)",
+                len(options), len(token),
+                # NOT logged: token text, option strings
+            )
+            continue
+        question_template = "Which type of {trigger} condition are you looking for?"
+        logger.info(
+            "auto-derived entry: token_len=%d option_count=%d "
+            "(options are CSV preferred_terms, skipping SNOMED validation)",
+            len(token), len(options),
+        )
+        # Override terms: options + all CSV preferred_terms + synonyms containing the
+        # token as a whole word. This suppresses compound queries like "lung cancer"
+        # from firing the bare "lung" trigger (mirrors _derive_overrides CSV scan +
+        # extends to synonyms to catch alias-based compound queries).
+        override_set: set[str] = {opt.lower() for opt in options}
+        # Add preferred_terms containing token
+        tok_pat = re.compile(rf"\b{re.escape(token)}\b", re.IGNORECASE)
+        for pt in unique_terms:
+            if tok_pat.search(pt):
+                override_set.add(pt.lower())
+        # Add synonyms containing token
+        override_set.update(_get_synonyms_containing(token))
+        # Self-defeat guard: remove bare trigger from override_terms
+        override_set.discard(token.lower())
+
+        derived[token] = AmbiguousEntry(
+            trigger=token,
+            category="indication",
+            question_template=question_template,
+            options=options,
+            override_terms=frozenset(override_set),
+            max_options=AMBIG_JSON_MAX_OPTIONS,
+        )
+    return derived
+
+
+def _merge_entries(
+    json_entries: dict[str, "AmbiguousEntry"],
+    derived_entries: dict[str, "AmbiguousEntry"],
+) -> dict[str, "AmbiguousEntry"]:
+    """Merge hand-curated JSON entries with auto-derived entries.
+
+    Hand-curated entries (json_entries) ALWAYS win on key collision (M5).
+    Logs count + simple checksum — no trigger text (HIPAA).
+    """
+    merged: dict[str, AmbiguousEntry] = dict(derived_entries)  # lower priority
+    collision_count = 0
+    for trigger, entry in json_entries.items():
+        if trigger in merged:
+            collision_count += 1
+        merged[trigger] = entry  # overwrite: hand-curated always wins
+    checksum = len(derived_entries) + len(json_entries) + collision_count
+    logger.info(
+        "AmbiguousTermsRegistry merge: json=%d derived=%d collisions=%d total=%d checksum=%d",
+        len(json_entries), len(derived_entries), collision_count, len(merged), checksum,
+        # NOT logged: trigger keys, option text
+    )
+    return merged
+
+
+# ---------------------------------------------------------------------------
+# Layer 2 module-level helpers (embedding ambiguity gate)
+# ---------------------------------------------------------------------------
+
+def _deduplicate_neighbors(
+    candidates: list[SNOMEDMatch],
+    max_options: int = AMBIG_JSON_MAX_OPTIONS,
+) -> list[str]:
+    """Deduplicate candidates by concept code (highest-confidence wins per code).
+
+    Sort descending by confidence; cap at max_options.
+    Returns display strings as-is from the CSV (lowercase). No .title() call (B4).
+    """
+    best_per_code: dict[str, SNOMEDMatch] = {}
+    for m in candidates:
+        if m.code not in best_per_code or m.confidence > best_per_code[m.code].confidence:
+            best_per_code[m.code] = m
+    sorted_matches = sorted(best_per_code.values(), key=lambda m: -m.confidence)
+    selected = sorted_matches[:max_options]
+    return [m.display for m in selected]
 
 # Hard-coded fallback for DEFAULT_CONDITION_PROMPT when CSV inspection fails
 _FALLBACK_CONDITION_OPTIONS = ["Cancer", "Diabetes", "Heart Disease", "Autoimmune", "Other"]
@@ -183,6 +391,7 @@ class SufficiencyDecision(BaseModel):
     #   "max_turns_reached"       — escape valve forced sufficient=True
     #   "ok_post_extraction"      — post-extraction check passed
     #   "filters_without_condition" — post-extraction check fired
+    #   "embedding_ambiguity"     — Layer 2 embedding gate fired (step 5b)
 
     triggered_by: Optional[str] = None          # trigger key (not logged)
     matched_entry: Optional[AmbiguousEntry] = None
@@ -271,6 +480,34 @@ class AmbiguousTermsRegistry:
                 f"(valid={valid_count}, invalid={invalid_count})"
             )
 
+        # ── Auto-derive triggers from SNOMED CSV (Layer 1) ────────────────────
+        # Runs AFTER JSON validation so collision detection is correct.
+        # Derived entries are NOT subject to strict_validation — they are CSV-sourced.
+        json_entries = dict(self._entries)  # snapshot before merge
+        try:
+            derived_entries = _build_derived_entries(Path(snomed_csv_path))
+        except Exception as exc:
+            logger.warning(
+                "AmbiguousTermsRegistry: derived entry build failed (%s) — using JSON-only",
+                type(exc).__name__,
+                # NOT logged: exc message
+            )
+            derived_entries = {}
+
+        # AMBIG_DERIVED_DEBUG: only honored in dev environment
+        if (
+            os.environ.get("AMBIG_DERIVED_DEBUG", "").lower() == "true"
+            and os.environ.get("ENV") == "dev"
+        ):
+            logger.info(
+                "AmbiguousTermsRegistry AMBIG_DERIVED_DEBUG: derived_count=%d",
+                len(derived_entries),
+            )
+
+        # Merge: JSON wins on collision (M5)
+        merged_entries = _merge_entries(json_entries, derived_entries)
+        self._entries = merged_entries
+
         # --- Compile combined trigger regex ---
         # Sorted longest-first so longer triggers win on overlap (e.g. "lung disease"
         # before "lung") — re alternation takes first match; order matters.
@@ -282,11 +519,10 @@ class AmbiguousTermsRegistry:
         )
 
         logger.info(
-            "AmbiguousTermsRegistry loaded: valid=%d invalid=%d strategy=%s strict=%s",
-            valid_count,
-            invalid_count,
-            self._strategy.name,
-            strict_validation,
+            "AmbiguousTermsRegistry: %d hand-curated + %d derived (skipped %d collisions)",
+            len(json_entries),
+            len(derived_entries),
+            sum(1 for k in derived_entries if k in json_entries),
             # NOT logged: trigger keys, option text
         )
 
@@ -567,3 +803,136 @@ class SufficiencyGate:
             filter_count,
         )
         return SufficiencyDecision(sufficient=True, reason="ok_post_extraction")
+
+
+# ---------------------------------------------------------------------------
+# EmbeddingAmbiguityGate  (Layer 2)
+# ---------------------------------------------------------------------------
+
+class EmbeddingAmbiguityGate:
+    """Layer 2 embedding-based ambiguity fallback.
+
+    Fires between SNOMED search (step 5 negation) and clinical-intent rejection (step 6).
+    Uses the embedding model already loaded by the SNOMED strategy (duck-typed via
+    hasattr(strategy, "get_top_neighbors")).
+
+    Does NOT call LLM. Does NOT mutate session. Thread-safe post-init.
+    """
+
+    def __init__(self, strategy: SNOMEDSearchStrategy) -> None:
+        self._strategy = strategy
+        self._has_embeddings: bool = hasattr(strategy, "get_top_neighbors")
+        self._unavailable_logged: bool = False
+        logger.info(
+            "EmbeddingAmbiguityGate initialized: has_embeddings=%s",
+            self._has_embeddings,
+        )
+
+    def evaluate(
+        self,
+        canonical: str,
+        snomed_matches: list[SNOMEDMatch],
+    ) -> Optional[SufficiencyDecision]:
+        """Evaluate whether Layer 2 should fire.
+
+        Precondition: snomed_matches MUST be post-NegationAnnotator (M4).
+        Negated matches are filtered out internally before any signal computation.
+
+        Returns SufficiencyDecision(sufficient=False, reason="embedding_ambiguity")
+        if a signal fires, else None (pipeline proceeds unchanged).
+
+        HIPAA: canonical NOT logged. Only match counts and confidence bounds logged.
+        """
+        # Import MIN_CONFIDENCE from assembler — single source of truth (B5)
+        from src.assembler import ResponseAssembler
+        min_confidence: float = ResponseAssembler.MIN_CONFIDENCE
+
+        if not self._has_embeddings:
+            if not self._unavailable_logged:
+                logger.info(
+                    "EmbeddingAmbiguityGate: strategy lacks get_top_neighbors — "
+                    "gate is no-op (logged once)"
+                )
+                self._unavailable_logged = True
+            return None
+
+        # Filter negated matches first (M4 precondition enforced here)
+        qualifying = [
+            m for m in snomed_matches
+            if m.confidence >= min_confidence and not m.negated
+        ]
+
+        # ── Signal B: multiple high-conf matches with narrow spread (genuine ambiguity)
+        signal_b = False
+        if len(qualifying) >= LAYER2_MIN_GENUINE_AMBIG:
+            confs = [m.confidence for m in qualifying]
+            if (max(confs) - min(confs)) < LAYER2_SPREAD_THRESHOLD:
+                signal_b = True
+
+        # ── Signal A: zero high-conf matches but sufficient mid-band neighbors
+        signal_a = False
+        mid_band_candidates: list[SNOMEDMatch] = []
+        if len(qualifying) == 0:
+            # Call strategy.get_top_neighbors for mid-band candidates
+            neighbors = self._strategy.get_top_neighbors(  # type: ignore[attr-defined]
+                canonical,
+                n=AMBIG_JSON_MAX_OPTIONS * 3,  # 15 — over-fetch for dedup
+                low_threshold=LAYER2_LOW_THRESHOLD,
+            )
+            # Filter to mid-band: [low_threshold, min_confidence)
+            mid_band = [
+                m for m in neighbors
+                if m.confidence < min_confidence and not m.negated
+            ]
+            # Dedup per concept code, keeping highest confidence
+            seen_codes: dict[str, SNOMEDMatch] = {}
+            for m in mid_band:
+                if m.code not in seen_codes or m.confidence > seen_codes[m.code].confidence:
+                    seen_codes[m.code] = m
+            deduped = list(seen_codes.values())
+            if len(deduped) >= LAYER2_MIN_NEIGHBORS:
+                signal_a = True
+                mid_band_candidates = deduped
+
+        if not (signal_a or signal_b):
+            return None
+
+        # Collect candidates for option building
+        if signal_a:
+            candidates = mid_band_candidates
+        else:
+            candidates = qualifying  # Signal B uses high-conf matches
+
+        options = _deduplicate_neighbors(candidates, max_options=AMBIG_JSON_MAX_OPTIONS)
+        if len(options) < AMBIG_JSON_MIN_OPTIONS:
+            logger.info(
+                "EmbeddingAmbiguityGate: insufficient distinct options (count=%d) — pass-through",
+                len(options),
+            )
+            return None
+
+        # Build a synthetic AmbiguousEntry for the assembler
+        # All output strings flow through html.escape() in ResponseAssembler.build_clarification
+        entry = AmbiguousEntry(
+            trigger="<embedding_ambiguity>",
+            category="indication",
+            question_template="Which condition are you looking for?",
+            options=options,
+            override_terms=frozenset(opt.lower() for opt in options),
+            max_options=AMBIG_JSON_MAX_OPTIONS,
+        )
+
+        logger.info(
+            "EmbeddingAmbiguityGate fired: signal=%s candidates=%d options=%d qualifying=%d",
+            "A" if signal_a else "B",
+            len(candidates), len(options), len(qualifying),
+            # NOT logged: canonical, option text, candidate display strings
+        )
+
+        # triggered_by=None always — APPEND mode (B2: no single trigger word to substitute)
+        return SufficiencyDecision(
+            sufficient=False,
+            reason="embedding_ambiguity",
+            triggered_by=None,
+            matched_entry=entry,
+        )
