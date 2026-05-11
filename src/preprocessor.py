@@ -145,6 +145,16 @@ class Preprocessor:
             char_count=len(sanitized),
         )
 
+    def assert_safe(self, text: str) -> None:
+        """Check injection patterns on an already-preprocessed string.
+
+        Does NOT enforce length limits — canonical queries from substitute/append
+        may legitimately exceed MAX_LENGTH (M2 fix: called after merge, not on raw input).
+        Raises PreprocessorError if any injection pattern matches.
+        """
+        if self._check_injection(text):
+            raise PreprocessorError("Invalid query detected")
+
     def _sanitize(self, text: str) -> str:
         """Strip leading/trailing whitespace and collapse internal whitespace."""
         text = text.replace("\x00", "")

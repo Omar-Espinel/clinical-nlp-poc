@@ -688,3 +688,41 @@ Two architectural specs added at the repo root for a planned v2 of the pipeline.
 - `rework-nlp-impl-spec.md` — pseudocode-level implementation spec for the proposal (1949 lines). Defines `AmbiguousTermsRegistry`, `AmbiguousEntry`, `SufficiencyGate`, and the `data/ambiguous_terms.json` artifact. Pydantic V2, `frozen=True`, with strict-vs-graceful validation modes for rolling deploys.
 
 **When implementing the rework**, treat `rework-nlp-proposal.md` as authoritative; `rework-nlp-impl-spec.md` deepens it with file paths, imports, constants, and class signatures. Look for `# OBSOLETE-AT-SCALE: <reason>` markers as the cleanup convention.
+
+### v2 Rework — Architecture and pipeline split (2026-05-08)
+
+Full implementation of the rework design described in `rework-nlp-proposal.md` and `rework-nlp-impl-spec.md`. The pipeline now supports multi-turn clarification and returns a discriminated union output type.
+
+**Core architectural changes:**
+- Pre-extraction sufficiency gate (`SufficiencyGate` + `AmbiguousTermsRegistry`): registry-driven deterministic check on the raw query before any LLM call; zero-token-cost for ambiguous queries that need clarification.
+- LLM extraction is now **filters-only** (`FilterExtractor`): medical terms are no longer extracted by the LLM; SNOMED matching is fully algorithmic.
+- Pluggable SNOMED strategies behind `SNOMEDSearchStrategy` Protocol: `hybrid_cascade` (default), `aho_corasick`, `ngram_lookup`. Swapped via `SNOMED_SEARCH_STRATEGY` env var.
+- `LLMProvider` abstraction (`src/llm_provider/`): removes Groq lock-in; default provider is `groq`.
+- NegEx algorithmic negation (`src/snomed_search/negation.py`): replaces LLM-based negation flag.
+- `ConversationSession` multi-turn state (`src/conversation.py`): immutable `Turn` records, clarification count gate, HIPAA-safe `summary_for_logging()`.
+- Parallel filter-extraction + SNOMED search via `ThreadPoolExecutor` with shared 15s timeout budget.
+- Discriminated union output: `NLPOutput` (type="search") or `ClarificationOutput` (type="clarification").
+- `app.py` rewritten as a chat UI: `st.chat_input` / `st.chat_message` per turn; clarification options rendered as clickable `st.button` widgets; "New Search" sidebar button resets `ConversationSession`.
+
+**New files added:**
+- `data/ambiguous_terms.json` — registry of ambiguous trigger terms with clarification question templates and SNOMED-validated option lists.
+- `src/exceptions.py` — `LLMProviderError`, `PipelineError`, `StrategyError`.
+- `src/sufficiency_gate.py` — `SufficiencyGate`, `AmbiguousTermsRegistry`, `AmbiguousEntry`, `SufficiencyDecision`.
+- `src/conversation.py` — `ConversationSession`, `Turn`.
+- `src/llm_provider/` — `base.py` (Protocol), `groq_provider.py`, `registry.py`, `__init__.py`.
+- `src/snomed_search/` — `base.py` (Protocol + `SNOMEDMatch`), `hybrid_cascade.py`, `aho_corasick.py`, `ngram_lookup.py`, `negation.py`, `registry.py`, `__init__.py`.
+- `src/normalizers/` — `base.py`, `geo.py` (moved from `src/geo_normalizer.py`), `__init__.py`.
+- `src/filter_extractor.py` — `FilterExtractor`, `ExtractedFilters`, `FilterField`, `StateFilter`.
+
+**OBSOLETE-AT-SCALE shims (kept for backward compatibility, marked for future removal):**
+- `src/extractor.py` — original combined LLM extractor (medical terms + filters); still used by `tests/run_tests.py` imports.
+- `src/snomed_resolver.py` — original 4-step cascade resolver; superseded by `src/snomed_search/hybrid_cascade.py`.
+- `src/geo_normalizer.py` — original geo normalizer; superseded by `src/normalizers/geo.py`.
+- `pipeline.run()` — single-turn shim wrapping `run_with_session()` with a fresh session; kept for `tests/run_tests.py`.
+
+**New environment variables:**
+- `LLM_PROVIDER` (default `groq`) — selects the LLM provider via `src/llm_provider/registry.py`.
+- `SNOMED_SEARCH_STRATEGY` (default `hybrid_cascade`) — selects the SNOMED strategy via `src/snomed_search/registry.py`; also settable per `batch_eval.py --strategy` run.
+- `AMBIG_STRICT_VALIDATION` (default `true`) — controls whether `AmbiguousTermsRegistry` raises on invalid option references at startup.
+
+**Known limitation:** the depression trigger in `ambiguous_terms.json` maps to neuro-adjacent SNOMED options because psychiatric concepts (F32/F33 ICD equivalents) are not yet in `data/snomed_clinical_trials.csv`. Future improvement: expand the CSV with DSM-5 aligned concepts.

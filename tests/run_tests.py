@@ -6,6 +6,7 @@ Run from the project root directory:
 Requires GROQ_API_KEY in .env or environment.
 Exit code 0 if >= 15 tests pass, exit code 1 otherwise.
 """
+# OBSOLETE-AT-SCALE: legacy single-turn regression suite — supplant with batch_eval.py multi-turn cases at cleanup
 
 import json
 import os

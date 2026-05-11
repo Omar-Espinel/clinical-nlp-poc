@@ -1,0 +1,128 @@
+{
+  "cancer": {
+    "category": "indication",
+    "question_template": "Which type of {trigger} are you looking for?",
+    "options": ["Lung Cancer", "Breast Cancer", "Colorectal Cancer", "Lymphoma", "Melanoma"],
+    "manual_override_terms": [],
+    "max_options": 5
+  },
+  "tumor": {
+    "category": "indication",
+    "question_template": "Which type of {trigger} are you looking for?",
+    "options": ["Malignant Neoplasm", "Neoplasm", "Hepatocellular Carcinoma", "Malignant Neoplasm of Brain", "Malignant Neoplasm of Bone"],
+    "manual_override_terms": [],
+    "max_options": 5
+  },
+  "oncology": {
+    "category": "indication",
+    "question_template": "Which oncology area are you interested in?",
+    "options": ["Lung Cancer", "Breast Cancer", "Leukemia", "Lymphoma", "Melanoma"],
+    "manual_override_terms": [],
+    "max_options": 5
+  },
+  "diabetes": {
+    "category": "indication",
+    "question_template": "Which type of {trigger} are you looking for?",
+    "options": ["Type 1 Diabetes Mellitus", "Type 2 Diabetes Mellitus", "Diabetes Mellitus"],
+    "manual_override_terms": [],
+    "max_options": 3
+  },
+  "diabetic": {
+    "category": "indication",
+    "question_template": "Which diabetic condition are you looking for?",
+    "options": ["Type 1 Diabetes Mellitus", "Type 2 Diabetes Mellitus", "Diabetes Mellitus"],
+    "manual_override_terms": [],
+    "max_options": 3
+  },
+  "heart": {
+    "category": "indication",
+    "question_template": "Which {trigger} condition are you looking for?",
+    "options": ["Heart Failure", "Atrial Fibrillation", "Myocardial Infarction", "Hypertension", "Coronary Artery Disease"],
+    "manual_override_terms": [],
+    "max_options": 5
+  },
+  "cardiac": {
+    "category": "indication",
+    "question_template": "Which cardiac condition are you looking for?",
+    "options": ["Heart Failure", "Atrial Fibrillation", "Myocardial Infarction", "Coronary Artery Disease", "Heart Disease"],
+    "manual_override_terms": [],
+    "max_options": 5
+  },
+  "cardiovascular": {
+    "category": "indication",
+    "question_template": "Which cardiovascular condition are you looking for?",
+    "options": ["Heart Failure", "Atrial Fibrillation", "Hypertension", "Coronary Artery Disease", "Heart Disease"],
+    "manual_override_terms": [],
+    "max_options": 5
+  },
+  "arthritis": {
+    "category": "indication",
+    "question_template": "Which type of {trigger} are you looking for?",
+    "options": ["Rheumatoid Arthritis", "Psoriatic Arthritis", "Ankylosing Spondylitis"],
+    "manual_override_terms": [],
+    "max_options": 3
+  },
+  "autoimmune": {
+    "category": "indication",
+    "question_template": "Which {trigger} condition are you looking for?",
+    "options": ["Systemic Lupus Erythematosus", "Rheumatoid Arthritis", "Multiple Sclerosis", "Crohn Disease", "Psoriasis"],
+    "manual_override_terms": [],
+    "max_options": 5
+  },
+  "neurological": {
+    "category": "indication",
+    "question_template": "Which {trigger} condition are you looking for?",
+    "options": ["Alzheimer Disease", "Parkinson Disease", "Multiple Sclerosis", "Epilepsy", "Amyotrophic Lateral Sclerosis"],
+    "manual_override_terms": [],
+    "max_options": 5
+  },
+  "neuro": {
+    "category": "indication",
+    "question_template": "Which neuro condition are you looking for?",
+    "options": ["Alzheimer Disease", "Parkinson Disease", "Multiple Sclerosis", "Epilepsy", "Amyotrophic Lateral Sclerosis"],
+    "manual_override_terms": [],
+    "max_options": 5
+  },
+  "brain": {
+    "category": "indication",
+    "question_template": "Which {trigger} condition are you looking for?",
+    "options": ["Alzheimer Disease", "Parkinson Disease", "Epilepsy", "Vascular Dementia", "Mild Cognitive Impairment"],
+    "manual_override_terms": ["brain cancer", "malignant neoplasm of brain"],
+    "max_options": 5
+  },
+  "liver": {
+    "category": "indication",
+    "question_template": "Which {trigger} condition are you looking for?",
+    "options": ["Hepatitis B", "Hepatitis C", "Hepatocellular Carcinoma"],
+    "manual_override_terms": [],
+    "max_options": 3
+  },
+  "hepatic": {
+    "category": "indication",
+    "question_template": "Which hepatic condition are you looking for?",
+    "options": ["Hepatitis B", "Hepatitis C", "Hepatocellular Carcinoma"],
+    "manual_override_terms": [],
+    "max_options": 3
+  },
+  "pulmonary": {
+    "category": "indication",
+    "question_template": "Which {trigger} condition are you looking for?",
+    "options": ["Chronic Obstructive Pulmonary Disease", "Asthma", "Idiopathic Pulmonary Fibrosis", "Lung Disorder"],
+    "manual_override_terms": [],
+    "max_options": 4
+  },
+  "depression": {
+    "category": "indication",
+    "question_template": "Which {trigger}-related condition are you looking for?",
+    "options": ["Alzheimer Disease", "Mild Cognitive Impairment", "Multiple Sclerosis"],
+    "manual_override_terms": [],
+    "max_options": 3
+  },
+  "infection": {
+    "category": "indication",
+    "question_template": "Which {trigger} are you looking for?",
+    "options": ["Human Immunodeficiency Virus Infection", "Hepatitis B", "Tuberculosis", "Covid-19"],
+    "manual_override_terms": [],
+    "max_options": 4
+  }
+}
