@@ -1,3 +1,4 @@
+# OBSOLETE-AT-SCALE: shim — remove after pipeline.run_with_session migration completes
 """Groq LLM extraction of medical terms and structured filters from clinical queries."""
 
 import json
@@ -9,6 +10,7 @@ from typing import Optional
 import groq
 
 from src.preprocessor import PreprocessedInput
+from src.exceptions import ExtractionError
 
 logger = logging.getLogger(__name__)
 
@@ -145,11 +147,6 @@ class ExtractionResult:
     state: FilterField = field(default_factory=lambda: FilterField(None, 0.0))
     phase: FilterField = field(default_factory=lambda: FilterField(None, 0.0))
     raw_response: str = ""
-
-
-class ExtractionError(Exception):
-    """Raised when LLM extraction fails."""
-    pass
 
 
 class Extractor:

@@ -5,19 +5,27 @@ results CSV, and prints a summary metrics table.
 
 Usage (run from project root):
     python tests/batch_eval.py
-    python tests/batch_eval.py --input tests/batch_test_cases.csv
     python tests/batch_eval.py --input tests/batch_test_cases.csv --output results/
     python tests/batch_eval.py --concurrency 1   # slower but easier to debug
+    python tests/batch_eval.py --legacy           # use legacy pipeline.run() single-turn path
+    python tests/batch_eval.py --strategy hybrid_cascade  # set SNOMED strategy per run
 
 CSV columns (all optional except id, input):
     id, category, description, input,
-    expected_snomed_codes     pipe-separated codes that MUST appear in output
-    expected_snomed_absent    pipe-separated codes that must NOT appear (negation)
-    expected_city             exact or fuzzy city match
-    expected_state            must appear anywhere in state.values list
-    expected_phase            fuzzy match
-    expected_investigator_name fuzzy match
-    expected_site_name        fuzzy match
+    expected_snomed_codes       pipe-separated codes that MUST appear in output
+    expected_snomed_absent      pipe-separated codes that must NOT appear (negation)
+    expected_city               exact or fuzzy city match
+    expected_state              must appear anywhere in state.values list
+    expected_phase              fuzzy match
+    expected_investigator_name  fuzzy match
+    expected_site_name          fuzzy match
+    expected_type               "search" or "clarification" (default: "search")
+    expected_clarification_field  trigger name expected to fire (e.g. "cancer")
+    expected_options_contain    pipe-separated substrings expected in options
+
+Multi-turn syntax: use ">>>" in the input column to separate turns.
+    e.g. "cancer>>>Lung Cancer" → turn 1: "cancer", turn 2: "Lung Cancer"
+    In --legacy mode only the first segment is used.
 """
 
 import argparse
@@ -28,7 +36,7 @@ import time
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -38,7 +46,8 @@ load_dotenv()
 from rapidfuzz import fuzz
 
 from src.pipeline import NLPPipeline
-from src.assembler import NLPOutput
+from src.assembler import NLPOutput, ClarificationOutput
+from src.conversation import ConversationSession
 from src.preprocessor import PreprocessorError
 from src.extractor import ExtractionError
 
@@ -52,6 +61,18 @@ def _parse_codes(raw: str) -> list[str]:
     if not raw or not raw.strip():
         return []
     return [c.strip() for c in raw.split("|") if c.strip()]
+
+
+def _parse_options_contain(raw: str) -> list[str]:
+    """Parse a pipe-separated string of expected option substrings."""
+    if not raw or not raw.strip():
+        return []
+    return [s.strip() for s in raw.split("|") if s.strip()]
+
+
+def _parse_turns(raw_input: str) -> list[str]:
+    """Split a multi-turn input string on '>>>' separator."""
+    return [seg.strip() for seg in raw_input.split(">>>") if seg.strip()]
 
 
 def _fuzzy_match(actual: Optional[str], expected: str) -> bool:
@@ -71,16 +92,31 @@ def _state_match(state_values: list[str], expected: str) -> bool:
 
 # ── Single test runner ────────────────────────────────────────────────────────
 
-def run_one(pipeline: NLPPipeline, row: dict) -> dict:
-    """Run a single test case and return a result dict."""
+def run_one(
+    pipeline: NLPPipeline,
+    row: dict,
+    legacy: bool = False,
+) -> dict:
+    """Run a single test case and return a result dict.
+
+    Supports multi-turn '>>>' syntax and the new expected_type /
+    expected_clarification_field / expected_options_contain columns.
+    In --legacy mode, always calls pipeline.run() with the first turn only.
+    """
     tc_id = row.get("id", "?")
-    query = row.get("input", "").strip()
+    raw_input = row.get("input", "").strip()
+
+    expected_type = (row.get("expected_type") or "search").strip().lower()
+    expected_clarification_field = (row.get("expected_clarification_field") or "").strip()
+    expected_options_contain = _parse_options_contain(
+        row.get("expected_options_contain") or ""
+    )
 
     result_row = {
         "id": tc_id,
         "category": row.get("category", ""),
         "description": row.get("description", ""),
-        "input": query,
+        "input": raw_input,
         "status": "",
         "error": "",
         "processing_time_ms": "",
@@ -107,11 +143,44 @@ def run_one(pipeline: NLPPipeline, row: dict) -> dict:
         "site_found": "",
         "site_expected": row.get("expected_site_name", ""),
         "site_pass": "",
+        # New v2 type/clarification checks
+        "output_type": "",
+        "expected_type": expected_type,
+        "type_pass": "",
+        "clarification_field_pass": "",
+        "options_contain_pass": "",
         "failures": "",
     }
 
+    turns = _parse_turns(raw_input)
+    if not turns:
+        result_row["status"] = "ERROR"
+        result_row["error"] = "Empty input"
+        return result_row
+
+    # ── Legacy mode: single-turn via pipeline.run() ───────────────────────────
+    if legacy:
+        query = turns[0]
+        result_row["input"] = query
+        try:
+            output: NLPOutput = pipeline.run(query)
+        except (PreprocessorError, ExtractionError) as exc:
+            result_row["status"] = "ERROR"
+            result_row["error"] = str(exc)
+            return result_row
+        except Exception as exc:
+            result_row["status"] = "ERROR"
+            result_row["error"] = f"Unexpected: {exc}"
+            return result_row
+        return _evaluate_nlp_output(output, result_row, row)
+
+    # ── Multi-turn mode via run_with_session() ────────────────────────────────
+    session = ConversationSession.new()
+    final_result: Union[NLPOutput, ClarificationOutput, None] = None
+
     try:
-        output: NLPOutput = pipeline.run(query)
+        for turn_text in turns:
+            final_result = pipeline.run_with_session(turn_text, session)
     except (PreprocessorError, ExtractionError) as exc:
         result_row["status"] = "ERROR"
         result_row["error"] = str(exc)
@@ -121,7 +190,83 @@ def run_one(pipeline: NLPPipeline, row: dict) -> dict:
         result_row["error"] = f"Unexpected: {exc}"
         return result_row
 
-    # ── Populate found values ─────────────────────────────────────────────
+    if final_result is None:
+        result_row["status"] = "ERROR"
+        result_row["error"] = "No output produced"
+        return result_row
+
+    # ── Evaluate output type ──────────────────────────────────────────────────
+    failures = []
+
+    if isinstance(final_result, ClarificationOutput):
+        result_row["output_type"] = "clarification"
+        result_row["processing_time_ms"] = final_result.metadata.processing_time_ms
+
+        if expected_type == "clarification":
+            result_row["type_pass"] = "PASS"
+        else:
+            result_row["type_pass"] = "FAIL"
+            failures.append(
+                f"expected type 'search', got 'clarification'"
+            )
+
+        # Check clarification field (triggered_by in the session's last turn)
+        if expected_clarification_field:
+            last_turn = session.turns[-1] if session.turns else None
+            triggered_by = (
+                last_turn.decision.triggered_by
+                if last_turn and last_turn.decision
+                else None
+            ) or ""
+            if expected_clarification_field.lower() in triggered_by.lower():
+                result_row["clarification_field_pass"] = "PASS"
+            else:
+                result_row["clarification_field_pass"] = "FAIL"
+                failures.append(
+                    f"clarification_field: expected '{expected_clarification_field}', "
+                    f"got '{triggered_by}'"
+                )
+
+        # Check options contain
+        if expected_options_contain:
+            options_text = " | ".join(final_result.options)
+            missing = [
+                s for s in expected_options_contain
+                if s.lower() not in options_text.lower()
+            ]
+            if missing:
+                result_row["options_contain_pass"] = "FAIL"
+                failures.append(
+                    f"options missing substrings: {missing}"
+                )
+            else:
+                result_row["options_contain_pass"] = "PASS"
+
+        result_row["failures"] = "; ".join(failures) if failures else ""
+        result_row["status"] = "PASS" if not failures else "FAIL"
+        return result_row
+
+    else:
+        # NLPOutput
+        result_row["output_type"] = "search"
+        if expected_type == "search":
+            result_row["type_pass"] = "PASS"
+        else:
+            result_row["type_pass"] = "FAIL"
+            failures.append("expected type 'clarification', got 'search'")
+
+        return _evaluate_nlp_output(final_result, result_row, row, pre_failures=failures)
+
+
+def _evaluate_nlp_output(
+    output: NLPOutput,
+    result_row: dict,
+    row: dict,
+    pre_failures: Optional[list] = None,
+) -> dict:
+    """Populate result_row with NLPOutput evaluation against expected CSV columns."""
+    failures = list(pre_failures or [])
+
     found_codes = {t.code for t in output.snomed_terms}
     result_row["snomed_codes_found"] = "|".join(sorted(found_codes))
     result_row["processing_time_ms"] = output.metadata.processing_time_ms
@@ -131,9 +276,7 @@ def run_one(pipeline: NLPPipeline, row: dict) -> dict:
     result_row["investigator_found"] = output.filters.investigator_name.value or ""
     result_row["site_found"] = output.filters.site_name.value or ""
 
-    failures = []
-
-    # ── SNOMED present check ──────────────────────────────────────────────
+    # ── SNOMED present check ──────────────────────────────────────────────────
     expected_codes = _parse_codes(row.get("expected_snomed_codes", ""))
     absent_codes = _parse_codes(row.get("expected_snomed_absent", ""))
 
@@ -150,13 +293,13 @@ def run_one(pipeline: NLPPipeline, row: dict) -> dict:
         result_row["snomed_precision"] = "N/A"
         result_row["snomed_recall"] = "N/A"
 
-    # ── SNOMED absent check ───────────────────────────────────────────────
+    # ── SNOMED absent check ───────────────────────────────────────────────────
     violated_absent = [c for c in absent_codes if c in found_codes]
     result_row["snomed_absent_violated"] = "|".join(violated_absent)
     for code in violated_absent:
         failures.append(f"Negated SNOMED {code} present in output")
 
-    # ── Filter checks ─────────────────────────────────────────────────────
+    # ── Filter checks ─────────────────────────────────────────────────────────
     def _check_filter(field: str, actual: Optional[str], expected: str) -> bool:
         if not expected:
             return True
@@ -222,6 +365,18 @@ def print_summary(results: list[dict]) -> None:
                 pass
     avg_recall = sum(recall_vals) / len(recall_vals) if recall_vals else None
 
+    # Clarification precision
+    clarif_expected = [r for r in results if r.get("expected_type", "search").strip().lower() == "clarification"]
+    clarif_correct = [
+        r for r in clarif_expected
+        if r.get("output_type", "") == "clarification"
+    ]
+    clarif_precision = (
+        len(clarif_correct) / len(clarif_expected)
+        if clarif_expected
+        else None
+    )
+
     # Per-category breakdown
     by_cat: dict[str, dict] = defaultdict(lambda: {"total": 0, "pass": 0})
     for r in results:
@@ -243,6 +398,12 @@ def print_summary(results: list[dict]) -> None:
     print(f"  Processing time  : avg {avg_ms}ms  |  min {min_ms}ms  |  max {max_ms}ms")
     if avg_recall is not None:
         print(f"  SNOMED recall    : {avg_recall:.2f} (avg over {len(recall_vals)} cases with expected codes)")
+    if clarif_precision is not None:
+        pct = clarif_precision * 100
+        print(
+            f"  Clarification precision : {pct:.1f}%  "
+            f"({len(clarif_correct)}/{len(clarif_expected)} expected clarification cases returned ClarificationOutput)"
+        )
     print()
     print("  Filter accuracy (cases with an expected value):")
     for field, s in filter_stats.items():
@@ -268,7 +429,16 @@ def main() -> int:
                         help="Directory to write results CSV (default: tests/results/)")
     parser.add_argument("--limit",  type=int, default=None,
                         help="Only run the first N cases (useful for quick smoke-testing)")
+    parser.add_argument("--legacy", action="store_true",
+                        help="Use legacy pipeline.run() single-turn path instead of run_with_session()")
+    parser.add_argument("--strategy", default=None,
+                        help="Set SNOMED_SEARCH_STRATEGY env var before pipeline init "
+                             "(e.g. hybrid_cascade, aho_corasick, ngram_lookup)")
     args = parser.parse_args()
+
+    # --strategy sets the env var BEFORE pipeline init so the registry picks it up
+    if args.strategy:
+        os.environ["SNOMED_SEARCH_STRATEGY"] = args.strategy
 
     api_key = os.getenv("GROQ_API_KEY", "")
     if not api_key:
@@ -283,9 +453,13 @@ def main() -> int:
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_path = output_dir / f"batch_results_{timestamp}.csv"
+    strategy_tag = f"_{args.strategy}" if args.strategy else ""
+    legacy_tag = "_legacy" if args.legacy else ""
+    output_path = output_dir / f"batch_results{strategy_tag}{legacy_tag}_{timestamp}.csv"
 
-    print(f"Loading pipeline (first run may take 30-60s)...")
+    mode_desc = "legacy pipeline.run()" if args.legacy else "run_with_session()"
+    strategy_desc = f" | strategy={args.strategy}" if args.strategy else ""
+    print(f"Loading pipeline (first run may take 30-60s)... [{mode_desc}{strategy_desc}]")
     pipeline = NLPPipeline(groq_api_key=api_key)
     print("Pipeline ready.\n")
 
@@ -309,6 +483,9 @@ def main() -> int:
         "phase_found", "phase_expected", "phase_pass",
         "investigator_found", "investigator_expected", "investigator_pass",
         "site_found", "site_expected", "site_pass",
+        # v2 type/clarification columns
+        "output_type", "expected_type", "type_pass",
+        "clarification_field_pass", "options_contain_pass",
         "failures",
     ]
 
@@ -320,10 +497,10 @@ def main() -> int:
             tc_id = row.get("id", f"#{i}")
             print(f"[{i:>3}/{total}] {tc_id} ...", end=" ", flush=True)
 
-            result = run_one(pipeline, row)
+            result = run_one(pipeline, row, legacy=args.legacy)
             results.append(result)
             writer.writerow(result)
-            out_fh.flush()  # write incrementally so partial results survive interruption
+            out_fh.flush()
 
             status = result["status"]
             if status == "PASS":
