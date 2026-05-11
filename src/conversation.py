@@ -171,7 +171,8 @@ class ConversationSession(BaseModel):
             trigger = last_decision.triggered_by
             pattern = re.compile(rf"\b{re.escape(trigger)}\b", re.IGNORECASE)
             if pattern.search(self.canonical_query):
-                return pattern.sub(user_input, self.canonical_query)
+                # B6 fix: lambda-form so user_input is literal (no \1 backreference interpretation)
+                return pattern.sub(lambda _m: user_input, self.canonical_query, count=1)
             else:
                 # Defensive fallback: trigger not literally present in canonical
                 # (e.g. user typed "cancers", trigger key is "cancer" — \b won't match).

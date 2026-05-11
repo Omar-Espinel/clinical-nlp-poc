@@ -284,6 +284,105 @@ class HybridCascadeStrategy:
             "semantic_available": self.semantic_available,
         }
 
+    def get_top_neighbors(
+        self,
+        query: str,
+        n: int = 15,
+        low_threshold: float = 0.42,
+    ) -> list[SNOMEDMatch]:
+        """Return up to n SNOMEDMatch objects whose cosine similarity to query
+        falls at or above low_threshold.
+
+        Called by EmbeddingAmbiguityGate (Layer 2). NOT part of SNOMEDSearchStrategy
+        Protocol — detected via duck-typing (hasattr).
+
+        Returns [] if semantic is unavailable. Emits one INFO log on first call
+        when unavailable (flag suppresses repeated logging).
+        Thread-safe: uses same read-only embedder/index as search().
+        HIPAA: query text NOT logged.
+        """
+        if not self.semantic_available or self._embedder is None:
+            if not getattr(self, "_top_neighbors_unavailable_logged", False):
+                logger.info(
+                    "get_top_neighbors: semantic unavailable — returning [] "
+                    "(this message logged once per strategy instance)"
+                )
+                self._top_neighbors_unavailable_logged = True
+            return []
+
+        try:
+            query_vec = self._embedder.encode([query], show_progress_bar=False)
+
+            if self._collection is not None:
+                embedding = query_vec.tolist()
+                results = self._collection.query(
+                    query_embeddings=embedding,
+                    n_results=min(n, len(self._exact_index)),
+                    include=["documents", "distances"],
+                )
+                if not results["documents"] or not results["documents"][0]:
+                    return []
+                matches: list[SNOMEDMatch] = []
+                for doc, dist in zip(
+                    results["documents"][0], results["distances"][0]
+                ):
+                    similarity = 1.0 - dist
+                    if similarity < low_threshold:
+                        continue
+                    record = self._exact_index.get(doc)
+                    if record is None:
+                        continue
+                    matches.append(SNOMEDMatch(
+                        code=record["concept_id"],
+                        display=record["preferred_term"],
+                        match_type="semantic",
+                        confidence=round(similarity, 4),
+                        original_text=query,
+                        span=(0, len(query)),
+                        negated=False,
+                    ))
+                return matches
+
+            if self._np_embeddings is not None and self._np_terms:
+                import numpy as np
+                norm = np.linalg.norm(query_vec)
+                if norm == 0:
+                    return []
+                query_norm = (query_vec / norm).astype("float32")
+                similarities = self._np_embeddings @ query_norm.T
+                sims_flat = similarities.ravel()
+                # Get indices sorted by similarity descending
+                top_indices = int(np.argsort(sims_flat)[::-1].ravel()[0].__class__(0))
+                sorted_indices = list(np.argsort(sims_flat)[::-1])
+                matches = []
+                for idx in sorted_indices:
+                    sim = float(sims_flat[idx])
+                    if sim < low_threshold:
+                        break  # sorted descending — no need to continue
+                    if len(matches) >= n:
+                        break
+                    term = self._np_terms[idx]
+                    record = self._exact_index.get(term)
+                    if record is None:
+                        continue
+                    matches.append(SNOMEDMatch(
+                        code=record["concept_id"],
+                        display=record["preferred_term"],
+                        match_type="semantic",
+                        confidence=round(sim, 4),
+                        original_text=query,
+                        span=(0, len(query)),
+                        negated=False,
+                    ))
+                return matches
+
+        except Exception as exc:
+            logger.warning(
+                "get_top_neighbors: exception (%s) — returning []",
+                type(exc).__name__,
+            )
+        return []
+
     # -------------------------------------------------------------------------
     # Stage 1+2: exact + synonym via n-gram windows
     # -------------------------------------------------------------------------

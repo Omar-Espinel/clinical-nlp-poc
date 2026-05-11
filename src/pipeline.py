@@ -22,6 +22,7 @@ from src.snomed_search.negation import NegationAnnotator
 from src.snomed_search.registry import get_strategy
 from src.sufficiency_gate import (
     AmbiguousTermsRegistry,
+    EmbeddingAmbiguityGate,
     SufficiencyGate,
     SufficiencyDecision,
     _count_set_filters,
@@ -44,6 +45,7 @@ LOG_PATH_MAX_TURNS                 = "max_turns"
 LOG_PATH_CLINICAL_INTENT           = "clinical_intent"
 LOG_PATH_POST_EXTRACTION_SAFETY    = "post_extraction_safety"
 LOG_PATH_SEARCH                    = "search"
+LOG_PATH_EMBEDDING_AMBIGUITY       = "embedding_ambiguity_clarification"
 
 
 # ---------------------------------------------------------------------------
@@ -132,12 +134,14 @@ class NLPPipeline:
         )
 
         # Step 4: remaining components
-        self._gate        = SufficiencyGate(self._registry, snomed_csv_path=_snomed_csv)
-        self._extractor   = FilterExtractor(self._llm)
-        self._geo         = GeoNormalizer(geo_json_path or DEFAULT_GEO_PATH)
-        self._negation    = NegationAnnotator()
-        self._preprocessor = Preprocessor()
-        self._assembler   = ResponseAssembler()
+        self._gate           = SufficiencyGate(self._registry, snomed_csv_path=_snomed_csv)
+        self._extractor      = FilterExtractor(self._llm)
+        self._geo            = GeoNormalizer(geo_json_path or DEFAULT_GEO_PATH)
+        self._negation       = NegationAnnotator()
+        self._preprocessor   = Preprocessor()
+        self._assembler      = ResponseAssembler()
+        # Step 4e: Embedding ambiguity gate (Layer 2)
+        self._embedding_gate = EmbeddingAmbiguityGate(self._snomed)
 
         # Step 5: thread pool
         self._executor = ThreadPoolExecutor(
@@ -335,6 +339,28 @@ class NLPPipeline:
             session.session_id,
             # NOT logged: snomed display strings, canonical query
         )
+
+        # ── Step 5b: Embedding-based ambiguity fallback (Layer 2) ─────────────
+        embed_decision = self._embedding_gate.evaluate(canonical, snomed_matches)
+        if embed_decision is not None:
+            log_path = LOG_PATH_EMBEDDING_AMBIGUITY
+            clarification = self._assembler.build_clarification(embed_decision, session, start)
+            session.append_turn(Turn(
+                turn_index=len(session.turns),
+                user_input=user_text,
+                canonical_query=canonical,
+                decision=embed_decision,
+                filters=None,
+                snomed_matches=snomed_matches,
+                geo=None,
+                timestamp=time.time(),
+            ))
+            self._log_turn(
+                session, embed_decision, log_path, start,
+                snomed_count=len(snomed_matches),
+                filter_count=0,
+            )
+            return clarification
 
         # ── Step 6: Clinical-intent gate ─────────────────────────────────────
         # M4 FIX: apply same MIN_CONFIDENCE=0.60 + not-negated filter used by the
