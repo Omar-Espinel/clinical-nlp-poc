@@ -231,22 +231,14 @@ def _render_turn_result(turn_index: int, turn) -> None:
         else:
             st.info("Results processed successfully.")
     else:
-        # Clarification turn — render question + option buttons.
+        # Clarification turn — render question + hint list; user replies via chat_input.
         clarif = st.session_state.get("turn_outputs", {}).get(turn_index)
         if clarif is not None and isinstance(clarif, ClarificationOutput):
-            st.markdown(f"**{_safe(clarif.question)}**", unsafe_allow_html=True)
+            st.markdown(f"**{clarif.question}**")
             if clarif.options:
-                st.markdown("*Select an option or type your own answer:*")
-                cols = st.columns(min(len(clarif.options), 3))
-                for i, option in enumerate(clarif.options):
-                    col = cols[i % len(cols)]
-                    with col:
-                        if st.button(
-                            _safe(option),
-                            key=f"opt_{turn_index}_{i}",
-                        ):
-                            st.session_state["pending_input"] = option
-                            st.rerun()
+                items = "\n".join(f"- {opt}" for opt in clarif.options)
+                st.markdown(items)
+            st.markdown("*Type your answer in the box below.*")
         else:
             st.markdown("*Please clarify your query.*")
 
@@ -308,8 +300,8 @@ def _sync_turn_outputs(pipeline: NLPPipeline) -> None:
     """After a rerun, fill any turn_outputs gaps by re-running the pipeline's
     stored turn data. In practice the pipeline mutates session turns directly,
     so we store outputs in turn_outputs at run time — this is a no-op if already filled."""
-    # The actual result objects come from _run_pipeline_turn_and_capture, called
-    # during the rerun triggered by _run_pipeline_turn. Nothing to do here.
+    # The actual result objects come from _run_pipeline_turn_and_capture.
+    # Nothing to do here.
     pass
 
 
@@ -341,12 +333,6 @@ def main() -> None:
 
     session: ConversationSession = st.session_state["conversation"]
     turn_outputs: dict = st.session_state["turn_outputs"]
-
-    # ── Handle a pending option-button click from a previous render ──────────
-    if "pending_input" in st.session_state:
-        pending = st.session_state.pop("pending_input")
-        _run_pipeline_turn_and_capture(pipeline, pending, session, turn_outputs)
-        return
 
     # ── Render conversation history ───────────────────────────────────────────
     for i, turn in enumerate(session.turns):

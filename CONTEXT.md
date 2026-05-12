@@ -408,9 +408,9 @@ ClarificationOutput
 ### `app.py` — Streamlit chat UI
 - `@st.cache_resource` on `load_pipeline()` — pipeline initializes once per process.
 - `st.session_state["conversation"]` holds the `ConversationSession`. "New Search" sidebar button replaces it with `ConversationSession.new()`.
-- Per-turn rendering: `st.chat_message("user")` for `turn.user_input`; `st.chat_message("assistant")` renders either the search NLPOutput or the clarification question + `st.button(option)` for each option. Clicking an option re-runs `pipeline.run_with_session()` with that option as the next user input.
+- Per-turn rendering: `st.chat_message("user")` for `turn.user_input`; `st.chat_message("assistant")` renders either the search NLPOutput or the clarification question + a bulleted hint list of options. The user types their answer (free text — option text or anything else) into the existing `st.chat_input` at the bottom of the page; no per-option buttons.
 - Rate limiting (session-state based): max 5 queries / 60s window, max 30 / session. Clarifications count toward limits.
-- All LLM/user-derived display values go through `html.escape()` via `_safe()`. PHI disclaimer in sidebar + inline.
+- Escaping ownership: `ResponseAssembler.build_clarification()` (`src/assembler.py:122-124`) `html.escape`'s `question`, each `option`, and `canonical_query` before placing them into `ClarificationOutput`. `app.py` therefore renders those fields WITHOUT `_safe()` and WITHOUT `unsafe_allow_html=True`. The `_safe()` helper is still used in `_render_nlp_output()` for SNOMED/filter display strings (which are NOT pre-escaped) and at the user-input `st.chat_message` line. PHI disclaimer in sidebar + inline.
 - Errors render as assistant chat messages, not banners. `PreprocessorError` → warning style; `ExtractionError`, `LLMProviderError`, `PipelineError` → error style with generic text. Log lines use `session.summary_for_logging()` only.
 
 ### OBSOLETE-AT-SCALE shims
@@ -709,6 +709,22 @@ qa_testing/test_agent.py → src/pipeline.py
 ---
 
 ## Post-Build Changes Log
+
+### Clarification UI: buttons → text (2026-05-11)
+
+Removed per-option `st.button` widgets from the clarification render in `app.py`. The clarification turn now shows the question + a passive bulleted hint list of options; the user replies in the existing `st.chat_input` (free text — they can type one of the listed options verbatim, a refinement, or anything else, all of which route through the same `Preprocessor` → `SufficiencyGate` → canonical-query merge path).
+
+**Scope:** `app.py` only. No pipeline / schema / test changes. Existing `tests/test_conversation.py`, `tests/batch_eval.py`, `qa_testing/test_agent.py` continue to pass because they always fed option text directly as the next `user_input` string — they never simulated Streamlit button clicks.
+
+**Latent bug fixed inline:** the previous render code called `_safe()` on `clarif.question` and `clarif.options` AND passed `unsafe_allow_html=True` to `st.markdown`. Those strings are already `html.escape`'d in `ResponseAssembler.build_clarification()` (`src/assembler.py:122-124`), so `_safe()` at the render site was double-escaping (visible for strings containing `& < >`, e.g. `Hodgkin's & Non-Hodgkin's` → `Hodgkin&amp;#39;s &amp;amp; Non-Hodgkin&amp;#39;s`). Render site now trusts the pre-escaped strings and renders with plain `st.markdown(...)`. Dropping `unsafe_allow_html=True` is also a defense-in-depth win — already-escaped entities render correctly without the flag, and the flag's only effect was to allow raw HTML tags through unsanitized.
+
+**Escaping convention going forward:** `ResponseAssembler` owns escaping for `ClarificationOutput` fields. `app.py` does NOT re-escape those fields. For `NLPOutput` rendering (`_render_nlp_output()`), values are NOT pre-escaped, so `_safe()` is still applied at the render site there.
+
+**Removed code:** the per-option `st.columns` + `st.button` loop in `_render_turn_result()` (lines 238–249) and the `pending_input` session-state consumer in `main()` (lines 345–349). Both `st.session_state["pending_input"]` and the per-option `st.rerun()` are no longer used anywhere in the app.
+
+**Spec:** `rework-buttons-to-text.md` (Decision C revised post Security review; see the `<!-- override -->` block in section 3 for the double-escape + flag-removal rationale).
+
+**Known pre-existing dead code (NOT removed in this work item):** `_run_pipeline_turn` (lines ~171–214) and `_sync_turn_outputs` (lines ~299–305) in `app.py` have zero callers. They were dead before this change. Candidate for a separate cleanup PR.
 
 ### Ambiguity coverage v2 — auto-derived triggers + embedding gate (2026-05-11)
 
