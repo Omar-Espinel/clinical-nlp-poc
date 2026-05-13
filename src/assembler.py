@@ -4,11 +4,12 @@ import html
 import time
 from typing import TYPE_CHECKING, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from src.filter_extractor import ExtractedFilters
 from src.snomed_search.base import SNOMEDMatch
 from src.normalizers.geo import GeoResult
+from src.normalizers.metric import MetricFilterOutput
 from src.sufficiency_gate import AmbiguousEntry, SufficiencyDecision
 
 if TYPE_CHECKING:
@@ -66,6 +67,7 @@ class NLPOutput(BaseModel):
     type: Literal["search"] = "search"
     snomed_terms: list[SNOMEDTermOutput]
     filters: FiltersOutput
+    metric_filters: list[MetricFilterOutput] = Field(default_factory=list)
     metadata: MetadataOutput
 
 
@@ -139,6 +141,7 @@ class ResponseAssembler:
         snomed_matches: list[SNOMEDMatch],
         geo: GeoResult,
         start_time: float,
+        metric_filters: Optional[list[MetricFilterOutput]] = None,
     ) -> NLPOutput:
         """Build NLPOutput from extraction, SNOMED matches, geo result, and timing.
 
@@ -234,5 +237,6 @@ class ResponseAssembler:
         return NLPOutput(
             snomed_terms=included,
             filters=filters_out,
+            metric_filters=metric_filters or [],
             metadata=metadata,
         )

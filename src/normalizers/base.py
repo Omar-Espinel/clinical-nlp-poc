@@ -1,6 +1,6 @@
 """Base Protocol for filter normalizers."""
 
-from typing import Any, Protocol
+from typing import Any, Optional, Protocol
 
 
 class NormalizedFilter:
@@ -33,3 +33,15 @@ class FilterNormalizer(Protocol):
             A NormalizedFilter subclass instance.
         """
         ...
+
+
+class MetricFilterNormalizerProtocol(Protocol):
+    """Protocol for metric filter normalizers."""
+
+    @staticmethod
+    def normalize_operator(text: str) -> str: ...
+
+    @staticmethod
+    def normalize_value(
+        raw: Optional[str], data_type: str, operator: str
+    ) -> Optional[float | str]: ...

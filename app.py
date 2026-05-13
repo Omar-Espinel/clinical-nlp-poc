@@ -38,6 +38,16 @@ MATCH_TYPE_COLORS = {
     "semantic": "#fd7e14",
 }
 
+METRIC_OP_DISPLAY = {
+    "lt": "<",
+    "lte": "≤",
+    "gt": ">",
+    "gte": "≥",
+    "eq": "=",
+    "between": "between",
+    "any": "any",
+}
+
 
 @st.cache_resource
 def load_pipeline() -> Optional[NLPPipeline]:
@@ -51,6 +61,21 @@ def load_pipeline() -> Optional[NLPPipeline]:
 def _safe(value: str) -> str:
     """HTML-escape a user-derived string before embedding in markdown."""
     return html.escape(str(value))
+
+
+def _scrub_for_display(payload: dict) -> dict:
+    """Strip user-derived `original_text` from NLPOutput model_dump before st.json.
+
+    Sec S3/S9: `MetricFilterOutput.original_text` and `SNOMEDTermOutput.original_text`
+    hold raw user-query substrings. Excluding them from the JSON expander prevents
+    incidental disclosure via screen shares / screenshots in a HIPAA context.
+    """
+    scrubbed = dict(payload)
+    for term in scrubbed.get("snomed_terms", []):
+        term.pop("original_text", None)
+    for mf in scrubbed.get("metric_filters", []):
+        mf.pop("original_text", None)
+    return scrubbed
 
 
 def _badge(match_type: str) -> str:
@@ -149,6 +174,25 @@ def _render_nlp_output(output: NLPOutput) -> None:
             st.progress(conf_val, text=f"{conf_val * 100:.0f}% confidence")
             st.divider()
 
+    # ── Metric Filters section ────────────────────────────────────────────────
+    if output.metric_filters:
+        st.subheader("Metric Filters")
+        for mf in output.metric_filters:
+            label = _safe(mf.canonical_label)
+            op_symbol = METRIC_OP_DISPLAY.get(mf.operator, mf.operator)
+            if mf.operator == "any" or mf.value is None:
+                # rev2 NIT-12: no unsafe_allow_html
+                st.markdown(f"**{label}:** any")
+            else:
+                val_str = _safe(str(mf.value))
+                unit_str = f" {_safe(mf.unit)}" if mf.unit else ""
+                # rev2 Sec-12: no unsafe_allow_html
+                st.markdown(f"**{label}:** {op_symbol} {val_str}{unit_str}")
+            conf_val = min(max(float(mf.confidence), 0.0), 1.0)
+            st.progress(conf_val, text=f"{conf_val * 100:.0f}% confidence")
+            st.divider()
+            # NOT rendered: mf.original_text (HIPAA — user-derived)
+
     st.divider()
     m1, m2, m3 = st.columns(3)
     m1.metric("Processing Time (ms)", output.metadata.processing_time_ms)
@@ -165,7 +209,7 @@ def _render_nlp_output(output: NLPOutput) -> None:
     m3.metric("Filters Found", non_null)
 
     with st.expander("📋 Structured Output (JSON)"):
-        st.json(output.model_dump())
+        st.json(_scrub_for_display(output.model_dump()))
 
 
 def _run_pipeline_turn(pipeline: NLPPipeline, user_input: str) -> None:
