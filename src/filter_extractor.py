@@ -4,10 +4,11 @@ import json
 import logging
 from typing import ClassVar, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from src.exceptions import ExtractionError
 from src.llm_provider.base import LLMProvider
+from src.normalizers.metric import MetricMatch, MetricFilterOutput, MetricFilterNormalizer
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,7 @@ class ExtractedFilters(BaseModel):
     state: StateFilter
     phase: FilterField
     raw_response_length: int
+    metric_fields: dict[str, MetricFilterOutput] = Field(default_factory=dict)
 
 
 _REQUIRED_KEYS = frozenset(
@@ -91,17 +93,33 @@ class FilterExtractor:
         "}"
     )
 
-    def __init__(self, provider: LLMProvider) -> None:
+    def __init__(
+        self,
+        provider: LLMProvider,
+        known_metric_fields: Optional[frozenset[str]] = None,
+    ) -> None:
         self._provider = provider
+        self._known_metric_fields: Optional[frozenset[str]] = known_metric_fields
 
-    def extract(self, canonical_query: str) -> ExtractedFilters:
+    def extract(
+        self,
+        canonical_query: str,
+        metric_matches: Optional[list[MetricMatch]] = None,
+    ) -> ExtractedFilters:
         """Call the LLM provider and return structured filter fields.
 
         Raises ExtractionError on JSON parse failure or missing required keys.
         Never logs query text or response content (HIPAA).
+
+        metric_matches: if non-empty, appends a metric extraction section to the
+        system prompt and parses metric_fields from the LLM response.
         """
+        system = self.SYSTEM_PROMPT
+        if metric_matches:
+            system = system + "\n\n" + self._build_metric_section(metric_matches)
+
         raw = self._provider.complete(
-            system_prompt=self.SYSTEM_PROMPT,
+            system_prompt=system,
             user_prompt=canonical_query,
             max_tokens=512,
             temperature=0.0,
@@ -125,11 +143,11 @@ class FilterExtractor:
                     "parse_success=False provider=%s", self._provider.name
                 )
 
-        result = self._validate(parsed, raw_response_length=len(raw))
+        result = self._validate(parsed, raw_response_length=len(raw), metric_matches=metric_matches)
         logger.info(
             "Filter extraction complete: provider=%s response_length=%d "
             "investigator_name_conf=%.2f site_name_conf=%.2f city_conf=%.2f "
-            "state_conf=%.2f phase_conf=%.2f",
+            "state_conf=%.2f phase_conf=%.2f metric_fields_count=%d",
             self._provider.name,
             len(raw),
             result.investigator_name.confidence,
@@ -137,10 +155,69 @@ class FilterExtractor:
             result.city.confidence,
             result.state.confidence,
             result.phase.confidence,
+            len(result.metric_fields),
         )
         return result
 
-    def _validate(self, parsed: dict, raw_response_length: int) -> ExtractedFilters:
+    def _build_metric_section(self, metric_matches: list[MetricMatch]) -> str:
+        """Build the metric extraction prompt section.
+
+        Asserts every match's canonical_field is in the known allowlist (rev2 S6).
+        Drops unknown fields silently with a count log.
+        """
+        known = self._known_metric_fields
+        if known is not None:
+            safe_matches = [m for m in metric_matches if m.canonical_field in known]
+            if len(safe_matches) < len(metric_matches):
+                logger.info(
+                    "_build_metric_section: dropped unknown fields count=%d",
+                    len(metric_matches) - len(safe_matches),
+                )
+        else:
+            safe_matches = list(metric_matches)
+
+        if not safe_matches:
+            return ""
+
+        fields_block = "\n".join(
+            f"  - Field key: {m.canonical_field} ({m.canonical_label})"
+            for m in safe_matches
+        )
+
+        # Build the JSON example showing snake_case keys verbatim
+        example_field = safe_matches[0].canonical_field
+        example_json = (
+            "{\n"
+            '  "metric_fields": {\n'
+            f'    "{example_field}": {{\n'
+            '      "operator_text": "under",\n'
+            '      "value": "5",\n'
+            '      "value_end": null\n'
+            "    }\n"
+            "  }\n"
+            "}"
+        )
+
+        return (
+            "ADDITIONAL TASK — Metric fields detected:\n\n"
+            "For each field below, extract from the query:\n\n"
+            "Fields:\n"
+            f"{fields_block}\n\n"
+            'Respond with a JSON object containing a "metric_fields" key, using EXACTLY the\n'
+            "snake_case field keys shown above. Example:\n\n"
+            f"{example_json}\n\n"
+            'Include "metric_fields" in your JSON response even if all values are null.\n'
+            "Do NOT invent values not present in the query.\n"
+            "Do NOT use camelCase keys.\n"
+            'If the user expressed "No preference" for a field, emit operator_text="any" and value=null for that field.'
+        )
+
+    def _validate(
+        self,
+        parsed: dict,
+        raw_response_length: int,
+        metric_matches: Optional[list[MetricMatch]] = None,
+    ) -> ExtractedFilters:
         """Build ExtractedFilters from the raw LLM dict.
 
         Silently drops medical_terms if the LLM accidentally included it (rule 1).
@@ -187,6 +264,75 @@ class FilterExtractor:
                 is_region=False,
             )
 
+        # ── Parse metric_fields from LLM response ────────────────────────────
+        metric_fields_dict: dict[str, MetricFilterOutput] = {}
+        if metric_matches:
+            raw_metric = parsed.get("metric_fields", {})
+            if isinstance(raw_metric, dict):
+                # Build a quick lookup: canonical_field → MetricMatch
+                match_by_field: dict[str, MetricMatch] = {
+                    m.canonical_field: m for m in metric_matches
+                }
+                # Determine the expected field set (from known allowlist or from matches)
+                known = self._known_metric_fields
+                expected_keys = (
+                    set(match_by_field.keys()) if known is None
+                    else set(match_by_field.keys()) & known
+                )
+
+                unknown_field_count = 0
+                for field_key, raw_entry in raw_metric.items():
+                    if field_key not in expected_keys:
+                        unknown_field_count += 1
+                        continue
+                    if not isinstance(raw_entry, dict):
+                        continue
+
+                    match = match_by_field.get(field_key)
+                    if match is None:
+                        continue
+
+                    data_type = match.data_type
+                    operator_text = raw_entry.get("operator_text") or ""
+                    operator = MetricFilterNormalizer.normalize_operator(operator_text)
+                    # If LLM returned "any" but match has an implied operator, use implied
+                    if operator == "any" and match.implied_operator != "any":
+                        operator = match.implied_operator
+
+                    value = MetricFilterNormalizer.normalize_value(
+                        raw_entry.get("value"), data_type, operator
+                    )
+
+                    # unit: server-derived — for v1 all 12 fields are numeric without
+                    # specific units; set to None per spec §4 rev2
+                    server_unit = None
+
+                    try:
+                        mfo = MetricFilterOutput(
+                            field=field_key,
+                            canonical_label=match.canonical_label,
+                            operator=operator,
+                            data_type=data_type,
+                            value=value,
+                            original_text=match.matched_text,
+                            confidence=match.confidence,
+                            unit=server_unit,
+                        )
+                        metric_fields_dict[field_key] = mfo
+                    except ValidationError as exc:
+                        logger.info(
+                            "_validate metric_fields: skipped field error_count=%d",
+                            exc.error_count(),
+                            # NOT logged: str(exc), repr(exc), field values
+                        )
+                        continue
+
+                if unknown_field_count:
+                    logger.info(
+                        "_validate metric_fields: skipped unknown fields count=%d",
+                        unknown_field_count,
+                    )
+
         return ExtractedFilters(
             investigator_name=_scalar("investigator_name"),
             site_name=_scalar("site_name"),
@@ -194,4 +340,5 @@ class FilterExtractor:
             state=state_filter,
             phase=_scalar("phase"),
             raw_response_length=raw_response_length,
+            metric_fields=metric_fields_dict,
         )

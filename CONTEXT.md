@@ -297,7 +297,7 @@ session.set_canonical_query(canonical)  — mutator ─────────�
 
 **Discriminated union output:** every pipeline call returns `NLPOutput | ClarificationOutput`, distinguished by the `type` literal field.
 
-**Per-turn structured log line (JSON):** `ts`, `session_id`, `turn_index`, `clarification_count`, `path` (`sufficiency_clarification` | `max_turns` | `embedding_ambiguity_clarification` | `clinical_intent` | `post_extraction_safety` | `search`), `decision_reason`, `snomed_match_count`, `snomed_strategy`, `filter_count`, `llm_provider`, `processing_time_ms`. **Never logged:** any raw text, canonical query, filter values, SNOMED display strings, LLM response, trigger values, option text.
+**Per-turn structured log line (JSON):** `ts`, `session_id`, `turn_index`, `clarification_count`, `path` (`sufficiency_clarification` | `max_turns` | `embedding_ambiguity_clarification` | `clinical_intent` | `post_extraction_safety` | `metric_ambiguity_clarification` | `search`), `decision_reason`, `snomed_match_count`, `snomed_strategy`, `filter_count`, `llm_provider`, `processing_time_ms`, `metric_match_count`, `metric_resolved_count`. **Never logged:** any raw text, canonical query, filter values, SNOMED display strings, LLM response, trigger values, option text.
 
 ---
 
@@ -470,7 +470,7 @@ JSON test cases (default `qa_testing/test_cases_202.json`; 1000-case set availab
 
 ### HIPAA log hygiene (enforced project-wide)
 - Per-turn structured JSON log line emitted by `pipeline._log_turn`.
-- **NEVER logged:** raw query text, canonical query, user_input, preprocessed text, filter values, SNOMED display strings, LLM response, `decision.triggered_by` values, option text, `original_error.message` from `LLMProviderError`.
+- **NEVER logged:** raw query text, canonical query, user_input, preprocessed text, filter values, SNOMED display strings, LLM response, `decision.triggered_by` values, option text, `original_error.message` from `LLMProviderError`, `MetricMatch.matched_text`, `MetricFilterOutput.original_text`.
 - **LOGGED:** counts, lengths, confidence scores, SNOMED codes, decision reason enums, latency, session_id, turn_index, clarification_count, strategy/provider names.
 - Convention: any log statement involving session state uses `session.summary_for_logging()`. **Reviewers should grep for `to_dict()` and `repr(session)` in log lines.**
 
@@ -484,6 +484,11 @@ Only via `GROQ_API_KEY` env var or Streamlit secrets. Never hardcoded, never log
 - Background-thread leak under sustained extraction-timeout DoS — `ThreadPoolExecutor.cancel()` doesn't truly cancel running threads.
 - `chromadb` not on Py 3.13 without C++ Build Tools — numpy fallback in use.
 - `pyahocorasick` C extension — Py 3.13 wheels exist for major platforms; without them, fall back to `ngram_lookup` or `hybrid_cascade`.
+- AC automaton synonym deduplication: if two fields share an identical normalized synonym, only one field is reachable through AC (`pyahocorasick`'s `add_word` overwrites silently). Startup validation in `MetricIntentResolver` raises `ValueError` in strict mode (default) or logs a WARN and drops the duplicate in lenient mode.
+- Overlap resolution favors precision over recall: when synonyms for two fields overlap in a query span (e.g., `"total enrollment rate"`), the longer match wins and the shorter field is silently dropped. Document new entries' synonyms to avoid cross-field overlap.
+- Span recovery from normalized to original canonical is approximate. For ASCII-dominant clinical queries the indices align; for queries with multi-byte unicode characters in punctuation, `matched_text` indices may shift.
+- The "No preference" flow assumes the LLM correctly echoes `operator="any"` when prompted. If the LLM omits `metric_fields` entirely, the field stays unresolved and the gate can re-fire (bounded by `max_clarification_turns=3`).
+- `MetricFilterOutput.original_text` and `MetricMatch.matched_text` contain user-derived content. They MUST NEVER be logged. Both are HIPAA-equivalent to `triggered_by` values.
 
 ---
 
@@ -755,6 +760,27 @@ Closes the coverage gap where bare anatomy terms ("kidney", "lung", "bone") were
 **New constants:** `MIN_DERIVED_TOKEN_LEN=4`, `MIN_DERIVED_TERM_FREQUENCY=2`, `LAYER2_LOW_THRESHOLD=0.42`, `LAYER2_MIN_NEIGHBORS=3`, `LAYER2_MIN_GENUINE_AMBIG=3`, `LAYER2_SPREAD_THRESHOLD=0.08`. `MIN_CONFIDENCE=0.60` is imported from `assembler.py` — single source of truth.
 
 **Known limitation:** Single-CSV-row anatomy tokens (e.g. "kidney" appears in only "malignant neoplasm of kidney") fall to Layer 2 — they don't generate a Layer 1 entry. Layer 2's embedding gate handles them at the cost of one nearest-neighbor lookup per low-confidence query.
+
+### Metric filter recognition — AC automaton + fuzzy fallback (2026-05-12)
+
+Adds a deterministic pre-extraction pass for clinical-trial operational metrics (enrollment count, sites count, response times, etc.). A single Aho-Corasick automaton scans the canonical query for synonyms across 12 fields in one pass; rapidfuzz token_sort_ratio covers residual spans for spelling variants (budget capped at 5000 comparisons per query). Recognized fields without values trigger `MetricAmbiguityGate` clarifications using APPEND-mode canonical-merge (mirrors `EmbeddingAmbiguityGate`; no user-derived `triggered_by` content).
+
+**Files added:** `data/metric_filters.json` (12 fields), `src/normalizers/metric.py` (resolver + models + normalizer), `tests/test_metric_filters.py`.
+
+**Files modified:** `src/normalizers/base.py` (MetricFilterNormalizer Protocol), `src/filter_extractor.py` (ExtractedFilters.metric_fields, dynamic metric_section, ValidationError-safe logging), `src/sufficiency_gate.py` (MetricAmbiguityGate, _count_set_filters extension, SufficiencyDecision.reason validator), `src/assembler.py` (NLPOutput.metric_filters), `src/pipeline.py` (Step 3b resolver, Step 7b gate, LOG_PATH_METRIC_AMBIGUITY, _log_turn extension), `app.py` (operator display + render block), `tests/batch_test_cases.csv` (6 new rows incl. multi-turn `>>>`).
+
+**New env vars:** `METRIC_STRICT_VALIDATION` (default `true`).
+**New constants:** `MAX_FUZZY_COMPARISONS_PER_QUERY=5000`, `LOG_PATH_METRIC_AMBIGUITY="metric_ambiguity_clarification"`, `VALID_UNITS` (whitelist of {patients, months, days, sites, percent, queries, None}).
+
+**Tests added:** 8 groups in `tests/test_metric_filters.py` (43 cases) covering AC exact, AC synonym, fuzzy fallback, implied-operator detection, overlap dedup, Pydantic validators, normalizer, MetricAmbiguityGate.
+
+**Post-impl review fixes (Q17 / Q4 / S10 / S13 / S3-S9 / S1-S14, 2026-05-12):**
+- `MetricAmbiguityGate.evaluate()` pre-substitutes `{trigger}` in the clarification template with the first unresolved field's `canonical_label` (server-defined) before storing on `AmbiguousEntry`. Without this fix, `render_question` falls through to the `"your query"` literal since `triggered_by=None` for metric paths — producing nonsensical UI text. The pre-substitution is HIPAA-safe (no user content).
+- `MetricFilterOutput._validate_value` now enforces the `operator=="any"` ⇔ `value is None` invariant; constructing with `operator="any"` and a non-null numeric value raises `ValueError`.
+- `MetricIntentResolver.__init__` raises `ValueError` if zero entries pass validation (mirrors `AmbiguousTermsRegistry` empty-registry guard).
+- `app.py` `_scrub_for_display()` strips `original_text` from `snomed_terms` and `metric_filters` before passing `output.model_dump()` to `st.json()` — prevents incidental disclosure of user-derived query substrings via the structured-output expander.
+- `pipeline.py` now passes `self._metric_resolver._known_metric_fields` (the published frozenset built at init time) to `FilterExtractor`, not the private `_entries.keys()` view.
+- `_validate_entries` lenient-mode warning uses lazy `logger.warning("%s", msg)` formatting — protects against `%`-char injection in field keys.
 
 ### v2 Rework — Architecture and pipeline split (2026-05-08)
 

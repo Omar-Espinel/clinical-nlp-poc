@@ -1,0 +1,264 @@
+[
+  {
+    "canonical_label": "enrollment_count",
+    "data_type": "numeric",
+    "synonyms": [
+      "enrollment count", "enrolled patients", "number of patients enrolled",
+      "patient enrollment", "participants enrolled", "total enrollment",
+      "enrollment target", "enrollment size", "number enrolled",
+      "enrollment number", "enrolling patients"
+    ],
+    "clarification_question": "What enrollment count range are you targeting for {trigger}?",
+    "clarification_options": [
+      "Under 50 patients",
+      "50–200 patients",
+      "200–500 patients",
+      "Over 500 patients",
+      "No preference"
+    ],
+    "implied_operators": {
+      "large": "gt", "small": "lt", "fewer than": "lt", "more than": "gt",
+      "at least": "gte", "up to": "lte", "between": "between"
+    },
+    "fuzzy_threshold": 80
+  },
+  {
+    "canonical_label": "sites_count",
+    "data_type": "numeric",
+    "synonyms": [
+      "sites count", "number of sites", "site count", "number of study sites",
+      "participating sites", "active sites", "investigational sites",
+      "clinical sites", "research sites", "multi-site", "multisite"
+    ],
+    "clarification_question": "How many study sites are you looking for in {trigger}?",
+    "clarification_options": [
+      "Single site",
+      "2–10 sites",
+      "11–50 sites",
+      "Over 50 sites",
+      "No preference"
+    ],
+    "implied_operators": {
+      "large": "gt", "small": "lt", "few": "lt", "many": "gt",
+      "single": "eq", "multiple": "gt", "fewer than": "lt", "more than": "gt"
+    },
+    "fuzzy_threshold": 80
+  },
+  {
+    "canonical_label": "avg_days_to_first_response",
+    "data_type": "numeric",
+    "synonyms": [
+      "days to first response", "time to first response", "response time",
+      "initial response time", "site response time", "days to respond",
+      "average response time", "avg response time", "first response days",
+      "response latency", "site activation time"
+    ],
+    "clarification_question": "What site response time do you need for {trigger}?",
+    "clarification_options": [
+      "Under 5 days",
+      "5–10 days",
+      "11–20 days",
+      "Over 20 days",
+      "No preference"
+    ],
+    "implied_operators": {
+      "fast": "lt", "quick": "lt", "rapid": "lt", "slow": "gt",
+      "under": "lt", "below": "lt", "within": "lte",
+      "over": "gt", "above": "gt", "more than": "gt", "fewer than": "lt"
+    },
+    "fuzzy_threshold": 75
+  },
+  {
+    "canonical_label": "study_duration_months",
+    "data_type": "numeric",
+    "synonyms": [
+      "study duration", "trial duration", "study length", "trial length",
+      "duration of study", "months of study", "study period", "trial period",
+      "length of trial", "study timeline", "trial timeline", "duration months"
+    ],
+    "clarification_question": "What study duration are you looking for in {trigger}?",
+    "clarification_options": [
+      "Under 6 months",
+      "6–12 months",
+      "12–24 months",
+      "Over 24 months",
+      "No preference"
+    ],
+    "implied_operators": {
+      "short": "lt", "long": "gt", "brief": "lt", "extended": "gt",
+      "under": "lt", "over": "gt", "at least": "gte", "up to": "lte"
+    },
+    "fuzzy_threshold": 78
+  },
+  {
+    "canonical_label": "screen_failure_rate",
+    "data_type": "numeric",
+    "synonyms": [
+      "screen failure rate", "screening failure rate", "screen fail rate",
+      "failed screening", "screening failures", "screen failure percentage",
+      "screen fail percentage", "failed screens", "screen failure ratio"
+    ],
+    "clarification_question": "What screen failure rate threshold matters for {trigger}?",
+    "clarification_options": [
+      "Under 20%",
+      "20–40%",
+      "Over 40%",
+      "No preference"
+    ],
+    "implied_operators": {
+      "high": "gt", "low": "lt", "under": "lt", "over": "gt",
+      "below": "lt", "above": "gt", "less than": "lt", "more than": "gt"
+    },
+    "fuzzy_threshold": 80
+  },
+  {
+    "canonical_label": "enrollment_rate_per_month",
+    "data_type": "numeric",
+    "synonyms": [
+      "enrollment rate", "monthly enrollment", "enrollment per month",
+      "patients per month", "accrual rate", "monthly accrual", "accrual per month",
+      "enrollment velocity", "recruitment rate", "monthly recruitment"
+    ],
+    "clarification_question": "What monthly enrollment rate do you need for {trigger}?",
+    "clarification_options": [
+      "Under 5 patients/month",
+      "5–15 patients/month",
+      "16–30 patients/month",
+      "Over 30 patients/month",
+      "No preference"
+    ],
+    "implied_operators": {
+      "fast": "gt", "slow": "lt", "high": "gt", "low": "lt",
+      "at least": "gte", "at most": "lte", "under": "lt", "over": "gt"
+    },
+    "fuzzy_threshold": 78
+  },
+  {
+    "canonical_label": "dropout_rate",
+    "data_type": "numeric",
+    "synonyms": [
+      "dropout rate", "drop-out rate", "drop out rate", "attrition rate",
+      "withdrawal rate", "discontinuation rate", "lost to follow-up rate",
+      "patient attrition", "study withdrawal rate", "early termination rate"
+    ],
+    "clarification_question": "What dropout rate constraint matters for {trigger}?",
+    "clarification_options": [
+      "Under 10%",
+      "10–20%",
+      "Over 20%",
+      "No preference"
+    ],
+    "implied_operators": {
+      "high": "gt", "low": "lt", "under": "lt", "over": "gt",
+      "below": "lt", "above": "gt"
+    },
+    "fuzzy_threshold": 80
+  },
+  {
+    "canonical_label": "protocol_amendment_count",
+    "data_type": "numeric",
+    "synonyms": [
+      "protocol amendments", "protocol amendment count", "number of amendments",
+      "amendments count", "protocol changes", "protocol revisions",
+      "amendment frequency", "number of protocol revisions"
+    ],
+    "clarification_question": "How many protocol amendments are acceptable for {trigger}?",
+    "clarification_options": [
+      "Zero amendments",
+      "1–2 amendments",
+      "3 or more amendments",
+      "No preference"
+    ],
+    "implied_operators": {
+      "few": "lt", "many": "gt", "no": "eq", "zero": "eq",
+      "minimal": "lt", "frequent": "gt", "more than": "gt", "fewer than": "lt"
+    },
+    "fuzzy_threshold": 78
+  },
+  {
+    "canonical_label": "irb_approval_days",
+    "data_type": "numeric",
+    "synonyms": [
+      "irb approval time", "irb turnaround", "irb review time", "ethics approval time",
+      "irb days", "days to irb approval", "irb processing time",
+      "ethics board approval time", "irb review days", "irb turnaround time"
+    ],
+    "clarification_question": "What IRB approval timeline do you need for {trigger}?",
+    "clarification_options": [
+      "Under 30 days",
+      "30–60 days",
+      "Over 60 days",
+      "No preference"
+    ],
+    "implied_operators": {
+      "fast": "lt", "quick": "lt", "slow": "gt", "under": "lt",
+      "within": "lte", "over": "gt", "more than": "gt"
+    },
+    "fuzzy_threshold": 75
+  },
+  {
+    "canonical_label": "contract_execution_days",
+    "data_type": "numeric",
+    "synonyms": [
+      "contract execution time", "contract turnaround", "cta execution time",
+      "cta turnaround", "contract days", "days to contract execution",
+      "site contract time", "clinical trial agreement time", "contract cycle time",
+      "cta cycle time", "contract processing time"
+    ],
+    "clarification_question": "What contract execution timeline matters for {trigger}?",
+    "clarification_options": [
+      "Under 30 days",
+      "30–60 days",
+      "Over 60 days",
+      "No preference"
+    ],
+    "implied_operators": {
+      "fast": "lt", "quick": "lt", "slow": "gt", "under": "lt",
+      "within": "lte", "over": "gt", "more than": "gt"
+    },
+    "fuzzy_threshold": 75
+  },
+  {
+    "canonical_label": "data_query_rate",
+    "data_type": "numeric",
+    "synonyms": [
+      "data query rate", "query rate", "data queries", "number of queries",
+      "query frequency", "data error rate", "data quality rate",
+      "outstanding queries", "query volume", "edc query rate"
+    ],
+    "clarification_question": "What data query rate threshold matters for {trigger}?",
+    "clarification_options": [
+      "Under 5 queries per patient",
+      "5–15 queries per patient",
+      "Over 15 queries per patient",
+      "No preference"
+    ],
+    "implied_operators": {
+      "high": "gt", "low": "lt", "many": "gt", "few": "lt",
+      "under": "lt", "over": "gt", "less than": "lt", "more than": "gt"
+    },
+    "fuzzy_threshold": 78
+  },
+  {
+    "canonical_label": "site_initiation_visit_days",
+    "data_type": "numeric",
+    "synonyms": [
+      "site initiation visit", "siv time", "siv days", "site initiation time",
+      "initiation visit days", "days to site initiation", "site startup time",
+      "site activation days", "startup visit time", "site readiness days",
+      "time to site initiation"
+    ],
+    "clarification_question": "What site initiation timeline do you need for {trigger}?",
+    "clarification_options": [
+      "Under 30 days",
+      "30–60 days",
+      "Over 60 days",
+      "No preference"
+    ],
+    "implied_operators": {
+      "fast": "lt", "quick": "lt", "slow": "gt", "under": "lt",
+      "within": "lte", "over": "gt", "more than": "gt"
+    },
+    "fuzzy_threshold": 75
+  }
+]

@@ -23,11 +23,14 @@ import pandas as pd
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from src.snomed_search.base import SNOMEDMatch, SNOMEDSearchStrategy
+from src.normalizers.metric import MetricMatch, MetricFilterOutput
 
 # Circular-import guard: ConversationSession imports SufficiencyDecision from here.
 # Only import for type-checking; never at runtime to avoid cycles.
 if TYPE_CHECKING:
     from src.conversation import ConversationSession
+    from src.normalizers.metric import MetricIntentResolver
+    from src.filter_extractor import ExtractedFilters
 
 logger = logging.getLogger(__name__)
 
@@ -318,19 +321,29 @@ def _any_filter_set(filters) -> bool:
     - filters.state.values             (list[str])
     - filters.phase.value              (str | None)
 
+    Also checks resolved metric fields (rev2 M18).
     HIPAA: filter values are never logged or inspected beyond truthiness.
     """
-    return bool(
+    if (
         filters.investigator_name.value
         or filters.site_name.value
         or filters.city.value
         or filters.state.values      # list[str] — non-empty list is truthy
         or filters.phase.value
+    ):
+        return True
+    # NEW: check metric fields (rev2 M18)
+    return any(
+        mf.operator != "any" and mf.value is not None
+        for mf in getattr(filters, "metric_fields", {}).values()
     )
 
 
 def _count_set_filters(filters) -> int:
-    """Return the count of non-empty filter fields (0-5)."""
+    """Return the count of non-empty filter fields.
+
+    Includes resolved metric fields (value not None, operator not 'any') (rev2 M17).
+    """
     count = 0
     if filters.investigator_name.value:
         count += 1
@@ -342,6 +355,10 @@ def _count_set_filters(filters) -> int:
         count += 1
     if filters.phase.value:
         count += 1
+    # NEW: each metric field with a resolved value counts as one filter (rev2 M17)
+    for mf in getattr(filters, "metric_fields", {}).values():
+        if mf.operator != "any" and mf.value is not None:
+            count += 1
     return count
 
 
@@ -375,6 +392,18 @@ class AmbiguousEntry(BaseModel):
         return v
 
 
+_KNOWN_REASONS: frozenset[str] = frozenset({
+    "ok_no_trigger",
+    "ambiguous_trigger",
+    "max_turns_reached",
+    "ok_post_extraction",
+    "filters_without_condition",
+    "embedding_ambiguity",
+    "legacy_bypass",
+    "metric_without_value",
+})
+
+
 class SufficiencyDecision(BaseModel):
     """Frozen Pydantic V2 model carrying the gate's verdict.
 
@@ -392,9 +421,20 @@ class SufficiencyDecision(BaseModel):
     #   "ok_post_extraction"      — post-extraction check passed
     #   "filters_without_condition" — post-extraction check fired
     #   "embedding_ambiguity"     — Layer 2 embedding gate fired (step 5b)
+    #   "legacy_bypass"           — legacy run() shim bypass
+    #   "metric_without_value"    — MetricAmbiguityGate fired (step 7b)
 
     triggered_by: Optional[str] = None          # trigger key (not logged)
     matched_entry: Optional[AmbiguousEntry] = None
+
+    @field_validator("reason")
+    @classmethod
+    def _validate_reason(cls, v: str) -> str:
+        if v not in _KNOWN_REASONS:
+            raise ValueError(
+                f"reason must be one of {sorted(_KNOWN_REASONS)}, got {v!r}"
+            )
+        return v
 
 
 # ---------------------------------------------------------------------------
@@ -934,5 +974,108 @@ class EmbeddingAmbiguityGate:
             sufficient=False,
             reason="embedding_ambiguity",
             triggered_by=None,
+            matched_entry=entry,
+        )
+
+
+# ---------------------------------------------------------------------------
+# MetricAmbiguityGate  (Step 7b)
+# ---------------------------------------------------------------------------
+
+class MetricAmbiguityGate:
+    """Step 7b — fire when a metric field is recognized but value is unresolved.
+
+    Takes a MetricIntentResolver instance (rev2 B4) — no separate JSON load.
+    """
+
+    MAX_COMBINED_OPTIONS = 5
+
+    def __init__(self, resolver: "MetricIntentResolver") -> None:
+        self._resolver = resolver
+
+    def evaluate(
+        self,
+        metric_matches: list[MetricMatch],
+        extracted_filters: "ExtractedFilters",
+        session: "ConversationSession",
+    ) -> Optional[SufficiencyDecision]:
+        """Evaluate whether Step 7b should fire.
+
+        Returns SufficiencyDecision(sufficient=False, reason="metric_without_value")
+        if any metric field is unresolved, else None.
+
+        HIPAA: no matched_text, no original_text, no option strings logged.
+        INFO only; counts/IDs/enums only.
+        """
+        # Max-turns escape first (spec §7)
+        if session.is_max_turns_reached():
+            return None
+
+        # rev2 B6: a match is unresolved iff the field is absent OR
+        # (value is None AND operator != "any").
+        # operator=="any" means user already answered "No preference" — do NOT re-fire.
+        unresolved = [
+            m for m in metric_matches
+            if (
+                m.canonical_field not in extracted_filters.metric_fields
+                or (
+                    extracted_filters.metric_fields[m.canonical_field].value is None
+                    and extracted_filters.metric_fields[m.canonical_field].operator != "any"
+                )
+            )
+        ]
+
+        if not unresolved:
+            return None
+
+        first = unresolved[0]
+
+        # rev2 B4: use resolver.get_entry() — no separate JSON load
+        entry_json = self._resolver.get_entry(first.canonical_field)
+
+        # Combined question template if >1 unresolved field
+        if len(unresolved) > 1:
+            fields_str = ", ".join(m.canonical_label for m in unresolved[1:4])
+            question_template = (
+                "I found {trigger} and other metric criteria ("
+                + fields_str
+                + "). " + entry_json["clarification_question"]
+            )
+        else:
+            question_template = entry_json["clarification_question"]
+
+        # Q17 fix: pre-substitute {trigger} with the server-defined canonical_label.
+        # render_question uses decision.triggered_by which is None for metric paths
+        # (HIPAA — APPEND mode), so the template's {trigger} would otherwise render
+        # as the literal "your query" fallback. Substitute here with a human-readable
+        # server-side string to keep the rendered question coherent.
+        question_template = question_template.replace("{trigger}", first.canonical_label)
+
+        # rev2 M19: no padding — startup validation guarantees 3-5 options
+        options = entry_json["clarification_options"][:self.MAX_COMBINED_OPTIONS]
+
+        logger.info(
+            "MetricAmbiguityGate fired: unresolved_count=%d options_count=%d session_id=%s",
+            len(unresolved),
+            len(options),
+            session.session_id,
+            # NOT logged: matched_text, original_text, option strings, canonical_field value
+        )
+
+        # rev2 S1/S2: trigger = canonical_field (server-defined key, not user text)
+        # triggered_by=None → APPEND mode in compute_canonical_query
+        entry = AmbiguousEntry(
+            trigger=first.canonical_field,        # server-defined key
+            category="metric",
+            question_template=question_template,  # MUST contain literal {trigger}
+            options=options,
+            override_terms=frozenset(),           # no override needed for metrics
+            max_options=self.MAX_COMBINED_OPTIONS,
+        )
+
+        return SufficiencyDecision(
+            sufficient=False,
+            reason="metric_without_value",
+            triggered_by=None,          # rev2 B5/S1/S2 — APPEND mode
             matched_entry=entry,
         )

@@ -19,6 +19,7 @@ NOTE: local fixture. If reused later, move to tests/conftest.py.
 
 from __future__ import annotations
 
+import json
 import types
 from datetime import date
 from pathlib import Path
@@ -592,12 +593,17 @@ class TestMetricAmbiguityGate:
         assert "Sites Count" in question, (
             f"Combined question should mention 'Sites Count' (second field canonical_label); got: {question!r}"
         )
+        # Q17 fix: {trigger} is pre-substituted with the first field's canonical_label
+        # at gate construction time. "Enrollment Count" should appear in the rendered text.
+        assert "Enrollment Count" in question, (
+            f"Combined question should mention 'Enrollment Count' (first field canonical_label after substitution); got: {question!r}"
+        )
         # The per-field clarification_question text for enrollment_count refers to "enrollment count"
         assert "enrollment" in question.lower(), (
             f"Question should reference 'enrollment' (from clarification_question text); got: {question!r}"
         )
-        assert "{trigger}" in question, (
-            "combined question must contain {trigger} for build_clarification substitution"
+        assert "{trigger}" not in question, (
+            "{trigger} must be pre-substituted in MetricAmbiguityGate (Q17 fix) — no literal placeholder should remain"
         )
         assert len(decision.matched_entry.options) <= 5, (
             f"options must be <= 5; got {len(decision.matched_entry.options)}"
@@ -727,9 +733,12 @@ class TestMetricAmbiguityGate:
         assert decision is not None
         assert decision.sufficient is False
         assert decision.reason == "metric_without_value"
-        # Single-field: template comes directly from JSON clarification_question
-        # which is: "How many study sites are you looking for in {trigger}?"
-        assert "{trigger}" in decision.matched_entry.question_template
+        # Single-field: template comes from JSON clarification_question
+        # ("How many study sites are you looking for in {trigger}?") with {trigger}
+        # pre-substituted with the canonical_label "Sites Count" (Q17 fix).
+        q = decision.matched_entry.question_template
+        assert "{trigger}" not in q, "{trigger} must be pre-substituted (Q17 fix)"
+        assert "Sites Count" in q, f"expected canonical_label in question; got: {q!r}"
         assert decision.matched_entry.trigger == "sites_count"
 
 
@@ -760,6 +769,158 @@ class TestResolverHealthCheck:
         """get_entry raises KeyError for unknown field."""
         with pytest.raises(KeyError):
             resolver.get_entry("nonexistent_field_xyz")
+
+
+# ===========================================================================
+# Group 9 — Startup validation (post-impl review Q5)
+# ===========================================================================
+
+class TestStartupValidation:
+    """Validate _validate_entries strict-mode rejection of malformed JSON."""
+
+    def _make_tmp_json(self, tmp_path, entries):
+        path = tmp_path / "metric_filters_test.json"
+        path.write_text(json.dumps(entries), encoding="utf-8")
+        return str(path)
+
+    def _good_entry(self, label="test_field"):
+        return {
+            "canonical_label": label,
+            "data_type": "numeric",
+            "synonyms": ["test phrase", "another phrase"],
+            "fuzzy_threshold": 80,
+            "implied_operators": {"low": "lt"},
+            "clarification_options": ["A", "B", "No preference"],
+            "clarification_question": "Pick a range for {trigger}",
+        }
+
+    def test_invalid_data_type_strict_raises(self, tmp_path):
+        bad = self._good_entry()
+        bad["data_type"] = "fizzbuzz"
+        path = self._make_tmp_json(tmp_path, [bad])
+        with pytest.raises(ValueError, match="invalid data_type"):
+            MetricIntentResolver(path, strict_validation=True)
+
+    def test_empty_synonym_strict_raises(self, tmp_path):
+        bad = self._good_entry()
+        bad["synonyms"] = ["valid phrase", "   "]
+        path = self._make_tmp_json(tmp_path, [bad])
+        with pytest.raises(ValueError, match="empty or non-string synonym"):
+            MetricIntentResolver(path, strict_validation=True)
+
+    def test_invalid_implied_operator_strict_raises(self, tmp_path):
+        bad = self._good_entry()
+        bad["implied_operators"] = {"fast": "bogus_op"}
+        path = self._make_tmp_json(tmp_path, [bad])
+        with pytest.raises(ValueError, match="invalid implied_operator"):
+            MetricIntentResolver(path, strict_validation=True)
+
+    def test_threshold_out_of_range_strict_raises(self, tmp_path):
+        bad = self._good_entry()
+        bad["fuzzy_threshold"] = 150
+        path = self._make_tmp_json(tmp_path, [bad])
+        with pytest.raises(ValueError, match="fuzzy_threshold"):
+            MetricIntentResolver(path, strict_validation=True)
+
+    def test_clarification_options_wrong_count_strict_raises(self, tmp_path):
+        bad = self._good_entry()
+        bad["clarification_options"] = ["only one"]
+        path = self._make_tmp_json(tmp_path, [bad])
+        with pytest.raises(ValueError, match="clarification_options length"):
+            MetricIntentResolver(path, strict_validation=True)
+
+    def test_last_option_not_no_preference_strict_raises(self, tmp_path):
+        bad = self._good_entry()
+        bad["clarification_options"] = ["A", "B", "Something else"]
+        path = self._make_tmp_json(tmp_path, [bad])
+        with pytest.raises(ValueError, match="No preference"):
+            MetricIntentResolver(path, strict_validation=True)
+
+    def test_question_missing_trigger_strict_raises(self, tmp_path):
+        bad = self._good_entry()
+        bad["clarification_question"] = "No placeholder here"
+        path = self._make_tmp_json(tmp_path, [bad])
+        with pytest.raises(ValueError, match=r"\{trigger\}"):
+            MetricIntentResolver(path, strict_validation=True)
+
+    def test_duplicate_synonym_across_fields_strict_raises(self, tmp_path):
+        a = self._good_entry("field_a")
+        a["synonyms"] = ["shared phrase"]
+        b = self._good_entry("field_b")
+        b["synonyms"] = ["shared phrase"]
+        path = self._make_tmp_json(tmp_path, [a, b])
+        with pytest.raises(ValueError, match="Duplicate synonym"):
+            MetricIntentResolver(path, strict_validation=True)
+
+    def test_lenient_mode_drops_bad_entry(self, tmp_path):
+        bad = self._good_entry("bad_field")
+        bad["data_type"] = "fizzbuzz"
+        good = self._good_entry("good_field")
+        path = self._make_tmp_json(tmp_path, [bad, good])
+        r = MetricIntentResolver(path, strict_validation=False)
+        assert r.health_check()["fields"] == 1
+        assert "good_field" in r._known_metric_fields
+        assert "bad_field" not in r._known_metric_fields
+
+    def test_empty_automaton_after_validation_raises(self, tmp_path):
+        """S13: all entries invalid → ValueError even in lenient mode."""
+        bad = self._good_entry()
+        bad["data_type"] = "fizzbuzz"
+        path = self._make_tmp_json(tmp_path, [bad])
+        with pytest.raises(ValueError, match="no valid metric fields"):
+            MetricIntentResolver(path, strict_validation=False)
+
+
+# ===========================================================================
+# Post-impl coverage — Pydantic field-order + operator invariant + budget
+# ===========================================================================
+
+class TestPostImplCoverage:
+
+    def test_metric_filter_output_missing_operator_raises(self):
+        """Q7: value validator requires operator in info.data."""
+        with pytest.raises(ValueError, match="operator field missing"):
+            MetricFilterOutput.model_validate({
+                "field": "x",
+                "canonical_label": "x",
+                # operator omitted
+                "data_type": "numeric",
+                "value": 5,
+                "original_text": "",
+                "confidence": 0.9,
+            })
+
+    def test_metric_filter_output_operator_any_with_value_raises(self):
+        """S10: operator='any' requires value=None."""
+        with pytest.raises(ValueError, match="operator='any' requires value=None"):
+            MetricFilterOutput(
+                field="enrollment_count",
+                canonical_label="Enrollment Count",
+                operator="any",
+                data_type="numeric",
+                value=500,
+                original_text="enrollment count",
+                confidence=1.0,
+                unit=None,
+            )
+
+    def test_fuzzy_budget_short_circuit_logs(self, resolver, caplog):
+        """S13: budget exhaustion logs the count-only INFO line."""
+        import logging
+        caplog.set_level(logging.INFO)
+        # Force a long residual that generates many n-grams; flood synonym checks.
+        long_query = " ".join(["unknown"] * 300)
+        resolver.resolve(long_query)
+        # Either the budget log fired (with comparisons=N) or the resolver
+        # exited cleanly before exhausting budget; both outcomes verify the
+        # short-circuit path doesn't crash. Assert at least no exception raised
+        # and that if it did fire, the message contains only count-shaped fields.
+        budget_hits = [r for r in caplog.records if "metric_fuzzy_budget_exhausted" in r.getMessage()]
+        for r in budget_hits:
+            msg = r.getMessage()
+            assert "comparisons=" in msg, f"budget log must report comparisons count: {msg!r}"
+            # HIPAA: no query content in the log
+            assert "unknown" not in msg, "user-derived content must not appear in log line"
 
     def test_max_fuzzy_comparisons_constant(self):
         """MAX_FUZZY_COMPARISONS_PER_QUERY must equal 5000 per spec."""

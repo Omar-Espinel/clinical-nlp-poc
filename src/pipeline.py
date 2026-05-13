@@ -16,6 +16,7 @@ from src.filter_extractor import FilterExtractor, ExtractedFilters, FilterField,
 from src.llm_provider.base import LLMProvider
 from src.llm_provider.registry import get_provider
 from src.normalizers.geo import GeoNormalizer
+from src.normalizers.metric import MetricIntentResolver, MetricMatch, MetricFilterOutput
 from src.preprocessor import Preprocessor, PreprocessorError
 from src.snomed_search.base import SNOMEDMatch, SNOMEDSearchStrategy
 from src.snomed_search.negation import NegationAnnotator
@@ -23,6 +24,7 @@ from src.snomed_search.registry import get_strategy
 from src.sufficiency_gate import (
     AmbiguousTermsRegistry,
     EmbeddingAmbiguityGate,
+    MetricAmbiguityGate,
     SufficiencyGate,
     SufficiencyDecision,
     _count_set_filters,
@@ -31,9 +33,10 @@ from src.sufficiency_gate import (
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).parent.parent
-DEFAULT_SNOMED_CSV = str(PROJECT_ROOT / "data" / "snomed_clinical_trials.csv")
-DEFAULT_GEO_PATH   = str(PROJECT_ROOT / "data" / "geo_canonical.json")
-DEFAULT_AMBIG_PATH = str(PROJECT_ROOT / "data" / "ambiguous_terms.json")
+DEFAULT_SNOMED_CSV          = str(PROJECT_ROOT / "data" / "snomed_clinical_trials.csv")
+DEFAULT_GEO_PATH            = str(PROJECT_ROOT / "data" / "geo_canonical.json")
+DEFAULT_AMBIG_PATH          = str(PROJECT_ROOT / "data" / "ambiguous_terms.json")
+DEFAULT_METRIC_FILTERS_PATH = str(PROJECT_ROOT / "data" / "metric_filters.json")
 
 PARALLEL_TIMEOUT_SECONDS = 15.0   # shared budget for BOTH futures combined (B2 fix)
 THREAD_POOL_MAX_WORKERS  = 2
@@ -46,6 +49,7 @@ LOG_PATH_CLINICAL_INTENT           = "clinical_intent"
 LOG_PATH_POST_EXTRACTION_SAFETY    = "post_extraction_safety"
 LOG_PATH_SEARCH                    = "search"
 LOG_PATH_EMBEDDING_AMBIGUITY       = "embedding_ambiguity_clarification"
+LOG_PATH_METRIC_AMBIGUITY          = "metric_ambiguity_clarification"
 
 
 # ---------------------------------------------------------------------------
@@ -66,7 +70,7 @@ def _state_value_for_geo(state_filter: StateFilter) -> Optional[str]:
 
 
 def _empty_filters() -> ExtractedFilters:
-    """Return a fully-empty ExtractedFilters for the best-effort shim path."""
+    """Return a fully-empty ExtractedFilters for the best-effort shim path (rev2 B8)."""
     return ExtractedFilters(
         investigator_name=FilterField(value=None, confidence=0.0),
         site_name=FilterField(value=None, confidence=0.0),
@@ -74,6 +78,7 @@ def _empty_filters() -> ExtractedFilters:
         state=StateFilter(values=[], confidence=0.0, is_region=False),
         phase=FilterField(value=None, confidence=0.0),
         raw_response_length=0,
+        metric_fields={},
     )
 
 
@@ -92,6 +97,8 @@ class NLPPipeline:
         snomed_csv_path: Optional[str] = None,
         geo_json_path: Optional[str] = None,
         strict_validation: Optional[bool] = None,
+        metric_filters_path: Optional[str] = None,
+        metric_strict_validation: Optional[bool] = None,
         # Legacy positional kwarg accepted for backwards compat (tests/run_tests.py)
         groq_api_key: Optional[str] = None,
     ) -> None:
@@ -100,6 +107,7 @@ class NLPPipeline:
           2. LLM provider second — independent.
           3. Registry third — depends on strategy.
           4. Gate, extractor, geo, negation, preprocessor, assembler — order flexible.
+          4f. MetricIntentResolver and MetricAmbiguityGate after other components.
           5. ThreadPoolExecutor last — after all components ready.
         """
         _snomed_csv = snomed_csv_path or DEFAULT_SNOMED_CSV
@@ -135,13 +143,30 @@ class NLPPipeline:
 
         # Step 4: remaining components
         self._gate           = SufficiencyGate(self._registry, snomed_csv_path=_snomed_csv)
-        self._extractor      = FilterExtractor(self._llm)
         self._geo            = GeoNormalizer(geo_json_path or DEFAULT_GEO_PATH)
         self._negation       = NegationAnnotator()
         self._preprocessor   = Preprocessor()
         self._assembler      = ResponseAssembler()
         # Step 4e: Embedding ambiguity gate (Layer 2)
         self._embedding_gate = EmbeddingAmbiguityGate(self._snomed)
+
+        # Step 4f: Metric intent resolver and gate (§12c)
+        _metric_strict: bool = (
+            metric_strict_validation
+            if metric_strict_validation is not None
+            else os.environ.get("METRIC_STRICT_VALIDATION", "true").lower() == "true"
+        )
+        self._metric_resolver = MetricIntentResolver(
+            metric_filters_path or DEFAULT_METRIC_FILTERS_PATH,
+            strict_validation=_metric_strict,
+        )
+        self._metric_gate = MetricAmbiguityGate(self._metric_resolver)
+
+        # FilterExtractor initialized after metric_resolver so we can pass known fields
+        self._extractor = FilterExtractor(
+            self._llm,
+            known_metric_fields=self._metric_resolver._known_metric_fields,
+        )
 
         # Step 5: thread pool
         self._executor = ThreadPoolExecutor(
@@ -150,8 +175,10 @@ class NLPPipeline:
         )
 
         logger.info(
-            "NLPPipeline initialized: strategy=%s provider=%s strict_validation=%s",
+            "NLPPipeline initialized: strategy=%s provider=%s strict_validation=%s "
+            "metric_fields=%d",
             self._snomed.name, self._llm.name, _strict,
+            len(self._metric_resolver._entries),
             # NOT logged: api keys, paths, any content
         )
 
@@ -218,7 +245,11 @@ class NLPPipeline:
                 geo=None,
                 timestamp=time.time(),
             ))
-            self._log_turn(session, decision, log_path, start, snomed_count=0, filter_count=0)
+            self._log_turn(
+                session, decision, log_path, start,
+                snomed_count=0, filter_count=0,
+                metric_match_count=0, metric_resolved_count=0,
+            )
             return clarification
 
         # ── Steps 4-10: Extraction, negation, intent gate, geo, assembly ──────
@@ -236,15 +267,18 @@ class NLPPipeline:
         start: float,
         snomed_count: int = 0,
         filter_count: int = 0,
+        metric_match_count: int = 0,
+        metric_resolved_count: int = 0,
     ) -> None:
         """Emit single structured JSON log line per turn.
 
         Fields: ts, session_id, turn_index, clarification_count, path,
                 decision_reason, snomed_match_count, snomed_strategy,
-                filter_count, llm_provider, processing_time_ms.
+                filter_count, metric_match_count, metric_resolved_count,
+                llm_provider, processing_time_ms.
         NEVER logged: raw_query, canonical_query, user_input, filter values,
                       SNOMED display strings, LLM response, triggered_by value,
-                      option text.
+                      option text, matched_text, original_text.
         """
         log_record = {
             "ts": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -256,6 +290,8 @@ class NLPPipeline:
             "snomed_match_count": snomed_count,
             "snomed_strategy": self._snomed.name,
             "filter_count": filter_count,
+            "metric_match_count": metric_match_count,
+            "metric_resolved_count": metric_resolved_count,
             "llm_provider": self._llm.name,
             "processing_time_ms": int((time.perf_counter() - start) * 1000),
         }
@@ -272,9 +308,11 @@ class NLPPipeline:
         decision: SufficiencyDecision,
         session: ConversationSession,
         start: float,
+        metric_matches: Optional[list[MetricMatch]] = None,
     ) -> Union[NLPOutput, ClarificationOutput]:
-        """Run steps 4-10: parallel extraction, negation, clinical-intent gate,
-        post-extraction safety check, geo normalization, and final assembly.
+        """Run steps 3b-10: metric resolution, parallel extraction, negation,
+        clinical-intent gate, post-extraction safety check, metric gate,
+        geo normalization, and final assembly.
 
         Called by run_with_session() after the sufficiency gate passes, AND
         by run() shim when bypassing the sufficiency gate for ambiguous queries.
@@ -283,8 +321,17 @@ class NLPPipeline:
         """
         log_path: str = "unknown"
 
+        # ── Step 3b: Metric intent resolution (deterministic, pre-LLM) ───────
+        if metric_matches is None:
+            metric_matches = self._metric_resolver.resolve(canonical)
+            logger.info(
+                "run_with_session step=3b metric_matches=%d session_id=%s",
+                len(metric_matches), session.session_id,
+                # NOT logged: matched_text, canonical
+            )
+
         # ── Step 4: Parallel paths — filter LLM + algorithmic SNOMED ─────────
-        fut_filters = self._executor.submit(self._extractor.extract, canonical)
+        fut_filters = self._executor.submit(self._extractor.extract, canonical, metric_matches)
         fut_snomed  = self._executor.submit(self._snomed.search, canonical)
 
         filters: ExtractedFilters
@@ -359,6 +406,8 @@ class NLPPipeline:
                 session, embed_decision, log_path, start,
                 snomed_count=len(snomed_matches),
                 filter_count=0,
+                metric_match_count=len(metric_matches),
+                metric_resolved_count=0,
             )
             return clarification
 
@@ -406,9 +455,38 @@ class NLPPipeline:
             ))
             self._log_turn(
                 session, post_decision, log_path, start,
-                snomed_count=len(snomed_matches), filter_count=filter_set_count,
+                snomed_count=len(snomed_matches),
+                filter_count=filter_set_count,
+                metric_match_count=len(metric_matches),
+                metric_resolved_count=len(filters.metric_fields),
             )
             return clarification
+
+        # ── Step 7b: Metric ambiguity gate ───────────────────────────────────
+        if metric_matches:
+            metric_decision = self._metric_gate.evaluate(metric_matches, filters, session)
+            if metric_decision is not None:
+                log_path = LOG_PATH_METRIC_AMBIGUITY
+                clarification = self._assembler.build_clarification(metric_decision, session, start)
+                session.append_turn(Turn(
+                    turn_index=len(session.turns),
+                    user_input=user_text,
+                    canonical_query=canonical,
+                    decision=metric_decision,
+                    filters=filters,
+                    snomed_matches=snomed_matches,
+                    geo=None,
+                    timestamp=time.time(),
+                ))
+                self._log_turn(
+                    session, metric_decision, log_path, start,
+                    snomed_count=len(snomed_matches),
+                    filter_count=filter_set_count,
+                    metric_match_count=len(metric_matches),
+                    metric_resolved_count=0,
+                )
+                # NOT logged: metric_decision.triggered_by, metric_decision.matched_entry.options
+                return clarification
 
         # ── Step 8: Geo normalization ─────────────────────────────────────────
         geo = self._geo.normalize(
@@ -425,11 +503,14 @@ class NLPPipeline:
         self._preprocessor.assert_safe(canonical)
 
         # ── Step 10: Assemble output; append turn AFTER success ───────────────
+        resolved_metric_filters = list(filters.metric_fields.values()) if filters.metric_fields else []
+
         output: NLPOutput = self._assembler.assemble(
             filters=filters,
             snomed_matches=snomed_matches,
             geo=geo,
             start_time=start,
+            metric_filters=resolved_metric_filters,
         )
 
         log_path = LOG_PATH_SEARCH
@@ -447,6 +528,8 @@ class NLPPipeline:
             session, decision, log_path, start,
             snomed_count=output.metadata.total_snomed_matches,
             filter_count=filter_set_count,
+            metric_match_count=len(metric_matches),
+            metric_resolved_count=len(resolved_metric_filters),
         )
         return output
 
@@ -492,12 +575,16 @@ class NLPPipeline:
             else SufficiencyDecision(sufficient=True, reason="legacy_bypass")
         )
 
+        # Legacy shim passes [] for metric_matches — no metric clarification support.
+        # Clean boundary: _assemble_best_effort_from_session does not call
+        # MetricIntentResolver.resolve() (spec §12j D13).
         result = self._run_extraction_path(
             canonical=canonical,
             user_text=raw_query,
             decision=decision,
             session=session,
             start=start,
+            metric_matches=[],
         )
         # _run_extraction_path can itself return a ClarificationOutput only if
         # post_extraction_check fires, which is exceedingly rare for real clinical
