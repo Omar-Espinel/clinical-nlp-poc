@@ -10,13 +10,14 @@ SufficiencyGate.__init__ call, with class-level memoization. NOT at module impor
 
 from __future__ import annotations
 
+import calendar
 import json
 import logging
 import os
 import re
 import sys
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
@@ -983,6 +984,20 @@ class EmbeddingAmbiguityGate:
 # MetricAmbiguityGate  (Step 7b)
 # ---------------------------------------------------------------------------
 
+def _months_ago(today: date, months: int) -> date:
+    """Return a date that is `months` months before `today`.
+
+    Handles month-end overflow (e.g., Jan 31 - 1 month → Dec 31).
+    Used for computing absolute MM/YYYY date options at gate-fire time (§3.5).
+    """
+    month = today.month - 1 - months
+    year = today.year + month // 12
+    month = month % 12 + 1
+    last_day = calendar.monthrange(year, month)[1]
+    day = min(today.day, last_day)
+    return date(year, month, day)
+
+
 class MetricAmbiguityGate:
     """Step 7b — fire when a metric field is recognized but value is unresolved.
 
@@ -1053,7 +1068,21 @@ class MetricAmbiguityGate:
         question_template = question_template.replace("{trigger}", first.canonical_label)
 
         # rev2 M19: no padding — startup validation guarantees 3-5 options
-        options = entry_json["clarification_options"][:self.MAX_COMBINED_OPTIONS]
+        # §3.5: date-aware option substitution — compute absolute MM/YYYY at gate-fire time.
+        options = list(entry_json["clarification_options"])
+        if first.data_type == "date":
+            today = date.today()
+            six_months_ago = _months_ago(today, 6)
+            twelve_months_ago = _months_ago(today, 12)
+            twentyfour_months_ago = _months_ago(today, 24)
+            options = [
+                f"Since {six_months_ago:%m/%Y}",
+                f"Since {twelve_months_ago:%m/%Y}",
+                f"Since {twentyfour_months_ago:%m/%Y}",
+                f"Before {twentyfour_months_ago:%m/%Y}",
+                "No preference",
+            ]
+        options = options[:self.MAX_COMBINED_OPTIONS]
 
         logger.info(
             "MetricAmbiguityGate fired: unresolved_count=%d options_count=%d session_id=%s",

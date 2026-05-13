@@ -183,6 +183,12 @@ def _render_nlp_output(output: NLPOutput) -> None:
             if mf.operator == "any" or mf.value is None:
                 # rev2 NIT-12: no unsafe_allow_html
                 st.markdown(f"**{label}:** any")
+            elif mf.operator == "between" and mf.value_end is not None:
+                val_str = _safe(str(mf.value))
+                end_str = _safe(str(mf.value_end))
+                unit_str = f" {_safe(mf.unit)}" if mf.unit else ""
+                # §3.3b step 5: between {value} and {value_end}
+                st.markdown(f"**{label}:** between {val_str} and {end_str}{unit_str}")
             else:
                 val_str = _safe(str(mf.value))
                 unit_str = f" {_safe(mf.unit)}" if mf.unit else ""

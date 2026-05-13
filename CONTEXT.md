@@ -1,7 +1,7 @@
 # Clinical Research NLP — Project Context
 
 ## Status: ACTIVE · v2 rework merged
-## Last Updated: 2026-05-11
+## Last Updated: 2026-05-13
 ## Platform: Python 3.13 · Windows 11 · Streamlit
 
 ---
@@ -62,7 +62,7 @@ C:\Claude work\advarra\clinical-nlp-poc\
 ```
 clinical-nlp-poc/
 ├── context.md                       ← YOU ARE HERE — read before touching anything
-├── app.py                           ← Streamlit chat UI (431 lines)
+├── app.py                           ← Streamlit chat UI (465 lines)
 ├── requirements.txt                 ← Pinned dependencies (incl. pyahocorasick)
 ├── README.md                        ← HF Spaces config + user docs
 ├── DEPLOYMENT.md                    ← Local + HF deploy guide
@@ -75,7 +75,7 @@ clinical-nlp-poc/
 │   ├── pipeline.py                  ← NLPPipeline.run_with_session() — orchestrator (486 lines)
 │   ├── conversation.py              ← ConversationSession, Turn (295 lines)
 │   ├── sufficiency_gate.py          ← SufficiencyGate, AmbiguousTermsRegistry, AmbiguousEntry,
-│   │                                  DEFAULT_CONDITION_PROMPT (569 lines)
+│   │                                  DEFAULT_CONDITION_PROMPT, MetricAmbiguityGate (1088 lines)
 │   ├── filter_extractor.py          ← Filter-only LLM extraction (197 lines)
 │   ├── assembler.py                 ← NLPOutput | ClarificationOutput (238 lines)
 │   ├── exceptions.py                ← LLMProviderError, PipelineError, StrategyError,
@@ -105,19 +105,22 @@ clinical-nlp-poc/
 ├── data/
 │   ├── snomed_clinical_trials.csv   ← 116 SNOMED concepts with synonyms
 │   ├── geo_canonical.json           ← 200+ cities, US states + CA provinces, 59 regions
-│   └── ambiguous_terms.json         ← Triggers → clarification options (validated at startup)
+│   ├── ambiguous_terms.json         ← Triggers → clarification options (validated at startup)
+│   └── metric_filters.json          ← 12 Advarra-specific metric fields (AC automaton)
 │
 ├── tests/
 │   ├── run_tests.py                 ← OBSOLETE-AT-SCALE: 20-case regression suite
 │   ├── test_cases.json              ← 20 regression cases
 │   ├── batch_eval.py                ← Batch runner: --strategy, --legacy, --limit (520 lines)
-│   ├── batch_test_cases.csv         ← 100 evaluation scenarios
+│   ├── batch_test_cases.csv         ← 107 evaluation scenarios
 │   ├── test_sufficiency_gate.py     ← Gate unit tests (506 lines)
 │   ├── test_conversation.py         ← Multi-turn regression (614 lines)
 │   ├── test_snomed_strategies.py    ← Cross-strategy parity (386 lines)
 │   ├── test_negation.py             ← NegEx tests (169 lines)
 │   ├── test_llm_provider.py         ← Provider abstraction tests with mock (163 lines)
-│   └── test_ambiguity_coverage.py   ← Layer 1 + Layer 2 + B6 fix tests (434 lines)
+│   ├── test_ambiguity_coverage.py   ← Layer 1 + Layer 2 + B6 fix tests (434 lines)
+│   ├── test_metric_filters.py       ← 12-field metric filter tests (97 cases, 9 groups)
+│   └── conftest.py                  ← Rapidfuzz version assertion
 │
 ├── qa_testing/                       ← QA-driven test agent + large case sets
 │   ├── test_agent.py                ← Rate-limited runner with markdown report (497 lines)
@@ -126,6 +129,7 @@ clinical-nlp-poc/
 │
 ├── rework-nlp-proposal.md           ← Architectural proposal (revision 2) for v2 pipeline
 ├── rework-nlp-impl-spec.md          ← Pseudocode implementation spec for v2
+├── rework-metric-filters-v2.md      ← Advarra metric field definitions + test plan rev2
 ├── modified-proposal.md             ← Predecessor proposal (historical)
 ├── response-branch-spec.md          ← Branch-specific spec (historical)
 ├── README response.md               ← Branch-specific README (historical)
@@ -489,6 +493,8 @@ Only via `GROQ_API_KEY` env var or Streamlit secrets. Never hardcoded, never log
 - Span recovery from normalized to original canonical is approximate. For ASCII-dominant clinical queries the indices align; for queries with multi-byte unicode characters in punctuation, `matched_text` indices may shift.
 - The "No preference" flow assumes the LLM correctly echoes `operator="any"` when prompted. If the LLM omits `metric_fields` entirely, the field stays unresolved and the gate can re-fire (bounded by `max_clarification_turns=3`).
 - `MetricFilterOutput.original_text` and `MetricMatch.matched_text` contain user-derived content. They MUST NEVER be logged. Both are HIPAA-equivalent to `triggered_by` values.
+- The `_months_ago` helper in `sufficiency_gate.py` handles month-end overflow but does not adjust for calendar-date edge cases beyond standard Python `date` arithmetic (e.g., Feb 29 → Feb 28). Acceptable for MM/YYYY precision dates.
+- Date-aware gate options use `date.today()` at gate-fire time. For a long-running session where the session spans a month boundary, the options reflect the fire time, not the start time. Acceptable for a POC.
 
 ---
 
@@ -516,6 +522,7 @@ Only via `GROQ_API_KEY` env var or Streamlit secrets. Never hardcoded, never log
 | `LAYER2_MIN_NEIGHBORS` | `3` | `sufficiency_gate.py` | Min mid-band neighbors for Signal A |
 | `LAYER2_MIN_GENUINE_AMBIG` | `3` | `sufficiency_gate.py` | Min high-conf matches for Signal B |
 | `LAYER2_SPREAD_THRESHOLD` | `0.08` | `sufficiency_gate.py` | Max conf-spread for Signal B |
+| `MIN_VALID_YEAR` | `2000` | `normalizers/metric.py` | Date year-range floor (DOB-leak mitigation) |
 
 ---
 
@@ -761,26 +768,50 @@ Closes the coverage gap where bare anatomy terms ("kidney", "lung", "bone") were
 
 **Known limitation:** Single-CSV-row anatomy tokens (e.g. "kidney" appears in only "malignant neoplasm of kidney") fall to Layer 2 — they don't generate a Layer 1 entry. Layer 2's embedding gate handles them at the cost of one nearest-neighbor lookup per low-confidence query.
 
-### Metric filter recognition — AC automaton + fuzzy fallback (2026-05-12)
+### Metric filter recognition v1 — AC automaton + fuzzy fallback (2026-05-12)
 
-Adds a deterministic pre-extraction pass for clinical-trial operational metrics (enrollment count, sites count, response times, etc.). A single Aho-Corasick automaton scans the canonical query for synonyms across 12 fields in one pass; rapidfuzz token_sort_ratio covers residual spans for spelling variants (budget capped at 5000 comparisons per query). Recognized fields without values trigger `MetricAmbiguityGate` clarifications using APPEND-mode canonical-merge (mirrors `EmbeddingAmbiguityGate`; no user-derived `triggered_by` content).
+Adds a deterministic pre-extraction pass for clinical-trial operational metrics. A single Aho-Corasick automaton scans the canonical query for synonyms across 12 fields in one pass; rapidfuzz token_sort_ratio covers residual spans for spelling variants (budget capped at 5000 comparisons per query). Recognized fields without values trigger `MetricAmbiguityGate` clarifications using APPEND-mode canonical-merge (mirrors `EmbeddingAmbiguityGate`; no user-derived `triggered_by` content).
 
-**Files added:** `data/metric_filters.json` (12 fields), `src/normalizers/metric.py` (resolver + models + normalizer), `tests/test_metric_filters.py`.
+**Files added (v1):** `data/metric_filters.json` (12 fields), `src/normalizers/metric.py` (resolver + models + normalizer), `tests/test_metric_filters.py`.
 
-**Files modified:** `src/normalizers/base.py` (MetricFilterNormalizer Protocol), `src/filter_extractor.py` (ExtractedFilters.metric_fields, dynamic metric_section, ValidationError-safe logging), `src/sufficiency_gate.py` (MetricAmbiguityGate, _count_set_filters extension, SufficiencyDecision.reason validator), `src/assembler.py` (NLPOutput.metric_filters), `src/pipeline.py` (Step 3b resolver, Step 7b gate, LOG_PATH_METRIC_AMBIGUITY, _log_turn extension), `app.py` (operator display + render block), `tests/batch_test_cases.csv` (6 new rows incl. multi-turn `>>>`).
+**Files modified (v1):** `src/normalizers/base.py` (MetricFilterNormalizer Protocol), `src/filter_extractor.py` (ExtractedFilters.metric_fields, dynamic metric_section, ValidationError-safe logging), `src/sufficiency_gate.py` (MetricAmbiguityGate, _count_set_filters extension, SufficiencyDecision.reason validator), `src/assembler.py` (NLPOutput.metric_filters), `src/pipeline.py` (Step 3b resolver, Step 7b gate, LOG_PATH_METRIC_AMBIGUITY, _log_turn extension), `app.py` (operator display + render block), `tests/batch_test_cases.csv` (6 new rows incl. multi-turn `>>>`).
+
+### Metric filter recognition v2 — Advarra-specific field replace (2026-05-13)
+
+Full replacement of all 12 metric fields with Advarra-confirmed metrics mapped to the search-results widget. None of the original 12 reused. Single commit replaces JSON, test file, batch CSV rows, and adds date-aware gate logic.
+
+**New 12 fields:**
+1. `total_studies_with_advarra` — total Advarra study count (numeric)
+2. `studies_matching_search` — studies matching search (numeric)
+3. `active_trials` — active/ongoing trials (numeric)
+4. `most_recent_approval_date` — approval date (date, MM/YYYY)
+5. `avg_days_respond_to_queries` — query response time (numeric)
+6. `avg_days_submission_to_approval` — submission-to-approval time (numeric)
+7. `total_protocol_deviations_all_studies` — PDs across all studies (numeric)
+8. `total_protocol_deviations_matching_studies` — PDs in matching studies (numeric)
+9. `avg_enrollment_matching_studies` — avg enrollment per matching study (numeric)
+10. `avg_enrollment_matching_ta` — avg enrollment by therapeutic area (numeric)
+11. `avg_screening_rate` — screening velocity (numeric)
+12. `avg_days_to_fpe` — days to first patient enrolled (numeric)
+
+**Schema changes:**
+- `MetricFilterOutput.value_end` added for `between` operator support (user decision Q3); cross-field `_validate_between_pair` model validator enforces operator/value/value_end invariants for both numeric and date data types.
+- `_coerce_value_field` helper extracted; `_validate_value_end` field validator added.
+- `normalize_date` year-range check (`MIN_VALID_YEAR=2000`, max=today.year+1) mitigates DOB-leak risk (Sec-SB1).
+- `data_type="date"` branch in `_validate_value` with `isinstance(v, str)` guard and `operator="any"` short-circuit.
+
+**Gate changes:**
+- `MetricAmbiguityGate.evaluate` (§3.5): date-aware option substitution computes absolute MM/YYYY options at gate-fire time using `_months_ago` helper (e.g. `"Since 11/2025"`). User picks an absolute date; canonical merge produces a directly parseable MM/YYYY string.
+
+**Display changes:**
+- `app.py` metric-render block: `between` operator renders `"between {value} and {value_end}{unit}"`.
+
+**Tests:** 9 groups, 97 cases (was 8 groups, 43 cases). Date E2E tests (gte, between, year-range rejection), `between`-pair Pydantic validator tests, date-option MM/YYYY pattern assertion.
+
+**Spec:** `rework-metric-filters-v2.md` (537 lines, rev2 post QA + Security adversarial review). All reviewer findings dispositioned: C1-C7 addressed, QA-N1 verified, Sec-SM2/SM3 in implementation.
 
 **New env vars:** `METRIC_STRICT_VALIDATION` (default `true`).
-**New constants:** `MAX_FUZZY_COMPARISONS_PER_QUERY=5000`, `LOG_PATH_METRIC_AMBIGUITY="metric_ambiguity_clarification"`, `VALID_UNITS` (whitelist of {patients, months, days, sites, percent, queries, None}).
-
-**Tests added:** 8 groups in `tests/test_metric_filters.py` (43 cases) covering AC exact, AC synonym, fuzzy fallback, implied-operator detection, overlap dedup, Pydantic validators, normalizer, MetricAmbiguityGate.
-
-**Post-impl review fixes (Q17 / Q4 / S10 / S13 / S3-S9 / S1-S14, 2026-05-12):**
-- `MetricAmbiguityGate.evaluate()` pre-substitutes `{trigger}` in the clarification template with the first unresolved field's `canonical_label` (server-defined) before storing on `AmbiguousEntry`. Without this fix, `render_question` falls through to the `"your query"` literal since `triggered_by=None` for metric paths — producing nonsensical UI text. The pre-substitution is HIPAA-safe (no user content).
-- `MetricFilterOutput._validate_value` now enforces the `operator=="any"` ⇔ `value is None` invariant; constructing with `operator="any"` and a non-null numeric value raises `ValueError`.
-- `MetricIntentResolver.__init__` raises `ValueError` if zero entries pass validation (mirrors `AmbiguousTermsRegistry` empty-registry guard).
-- `app.py` `_scrub_for_display()` strips `original_text` from `snomed_terms` and `metric_filters` before passing `output.model_dump()` to `st.json()` — prevents incidental disclosure of user-derived query substrings via the structured-output expander.
-- `pipeline.py` now passes `self._metric_resolver._known_metric_fields` (the published frozenset built at init time) to `FilterExtractor`, not the private `_entries.keys()` view.
-- `_validate_entries` lenient-mode warning uses lazy `logger.warning("%s", msg)` formatting — protects against `%`-char injection in field keys.
+**New constants:** `MAX_FUZZY_COMPARISONS_PER_QUERY=5000`, `LOG_PATH_METRIC_AMBIGUITY="metric_ambiguity_clarification"`, `VALID_UNITS` (whitelist of {patients, months, days, sites, percent, queries, None}), `MIN_VALID_YEAR=2000`.
 
 ### v2 Rework — Architecture and pipeline split (2026-05-08)
 
