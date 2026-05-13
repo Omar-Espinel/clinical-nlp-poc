@@ -23,6 +23,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from src.sufficiency_gate import AMBIG_JSON_MAX_OPTIONS, AMBIG_JSON_MIN_OPTIONS
+
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
 # ---------------------------------------------------------------------------
@@ -339,6 +341,198 @@ class TestLayer2PipelineIntegration:
         # If result is None, the embedding similarity scores were below threshold on this
         # machine — this is acceptable behaviour (model weights may differ); the test
         # validates the gate logic path, not the exact similarity values.
+
+
+# ---------------------------------------------------------------------------
+# Hand-curated anatomy triggers (organs / body parts as umbrella terms)
+# ---------------------------------------------------------------------------
+
+class TestHandCuratedAnatomyTriggers:
+    """Cover the hand-curated anatomy/body-part umbrella triggers added to
+    ambiguous_terms.json.
+
+    Categories under test: major organs (bowel/blood/etc.), skeletal (bone/joint/
+    musculoskeletal), soft tissue (muscle), sensory (n/a — no CSV coverage),
+    vascular/lymphatic, head & neck, torso (thoracic/abdominal), limbs, skin.
+
+    Each trigger:
+      - must load through strict registry validation (options resolve at ≥0.85)
+      - must fire as `ambiguous_trigger` on a bare query
+      - must be suppressed when a compound CSV preferred_term containing it appears
+    """
+
+    NEW_TRIGGERS = [
+        # skeletal / soft tissue / musculature
+        "bone", "joint", "musculoskeletal", "muscle",
+        # skin
+        "skin", "dermatologic", "cutaneous",
+        # gastrointestinal (major organ)
+        "gastrointestinal", "bowel", "intestinal",
+        # blood / hematologic (major organ)
+        "blood", "hematologic", "hematology",
+        # lymphatic
+        "lymphatic", "lymphoid",
+        # vascular
+        "vascular", "vessel", "circulatory",
+        # head & neck
+        "head and neck",
+        # torso
+        "thoracic", "abdominal", "abdomen",
+        # limbs
+        "extremity", "extremities", "limb", "limbs",
+    ]
+
+    @pytest.fixture(scope="class")
+    def registry(self):
+        return _make_registry(strict=True)
+
+    @pytest.mark.parametrize("trigger", NEW_TRIGGERS)
+    def test_trigger_registered(self, registry, trigger):
+        """Every new trigger must be in the registry after strict-validation init."""
+        assert trigger in registry._entries, (
+            f"Trigger {trigger!r} missing from registry — option(s) likely "
+            "failed strict ≥0.85 SNOMED resolution"
+        )
+
+    @pytest.mark.parametrize("trigger", NEW_TRIGGERS)
+    def test_trigger_fires_on_bare_query(self, registry, trigger):
+        """A bare anatomy query must fire as ambiguous (override_terms absent)."""
+        hit = registry.find_trigger(trigger)
+        assert hit is not None, f"Bare {trigger!r} did not fire"
+        # The fired trigger may be a SHORTER substring trigger (e.g. "bone"
+        # firing inside "musculoskeletal" — wait, that can't, no boundary).
+        # Multi-word "head and neck" always fires as itself.
+        fired_trigger, entry = hit
+        assert entry.category == "indication"
+        # The entry's options must satisfy the registry schema (3-5 entries).
+        assert AMBIG_JSON_MIN_OPTIONS <= len(entry.options) <= AMBIG_JSON_MAX_OPTIONS
+
+    def test_bone_options_include_neoplasm(self, registry):
+        """T-1 analog for new trigger: 'bone' clarification surfaces bone cancer."""
+        hit = registry.find_trigger("bone")
+        assert hit is not None
+        _, entry = hit
+        assert "Malignant Neoplasm of Bone" in entry.options
+
+    def test_skin_options_include_melanoma(self, registry):
+        hit = registry.find_trigger("skin")
+        assert hit is not None
+        _, entry = hit
+        assert "Malignant Melanoma" in entry.options
+
+    def test_gastrointestinal_options_include_ibd(self, registry):
+        hit = registry.find_trigger("gastrointestinal")
+        assert hit is not None
+        _, entry = hit
+        assert "Inflammatory Bowel Disease" in entry.options
+
+    def test_blood_options_include_leukemia(self, registry):
+        hit = registry.find_trigger("blood")
+        assert hit is not None
+        _, entry = hit
+        assert "Leukemia" in entry.options
+
+    def test_vascular_options_include_hypertension(self, registry):
+        hit = registry.find_trigger("vascular")
+        assert hit is not None
+        _, entry = hit
+        assert "Hypertension" in entry.options
+
+    def test_head_and_neck_multi_word_trigger_fires(self, registry):
+        """Multi-word trigger 'head and neck' must fire on its bare phrase."""
+        hit = registry.find_trigger("head and neck")
+        assert hit is not None
+        fired_trigger, _ = hit
+        assert fired_trigger == "head and neck"
+
+    def test_head_and_neck_fires_in_sentence(self, registry):
+        """Multi-word trigger fires when embedded in a longer phrase."""
+        hit = registry.find_trigger("head and neck research at Mount Sinai")
+        assert hit is not None
+        fired_trigger, _ = hit
+        assert fired_trigger == "head and neck"
+
+    # ---- Override-term suppression for compound CSV preferred_terms ----
+
+    def test_bone_override_suppressed_by_preferred_term(self, registry):
+        """'malignant neoplasm of bone in NYC' must NOT fire the bare 'bone' trigger."""
+        hit = registry.find_trigger("malignant neoplasm of bone in NYC")
+        # If something fires, it must not be 'bone' itself (auto-override of the
+        # preferred_term suppresses the bare anatomy trigger).
+        if hit is not None:
+            assert hit[0] != "bone"
+
+    def test_bowel_override_suppressed_by_ibd_preferred_term(self, registry):
+        """'inflammatory bowel disease in Boston' must NOT fire the bare 'bowel' trigger."""
+        hit = registry.find_trigger("inflammatory bowel disease in Boston")
+        if hit is not None:
+            assert hit[0] != "bowel"
+
+    def test_vascular_override_suppressed_by_vascular_dementia(self, registry):
+        """'vascular dementia' is a CSV preferred_term, so 'vascular' is auto-overridden."""
+        hit = registry.find_trigger("vascular dementia in NYC")
+        if hit is not None:
+            assert hit[0] != "vascular"
+
+    def test_blood_pressure_suppresses_blood_via_manual_override(self, registry):
+        """'blood pressure' is in manual_override_terms — must suppress 'blood' trigger."""
+        hit = registry.find_trigger("blood pressure measurement in NYC")
+        if hit is not None:
+            assert hit[0] != "blood"
+
+    def test_blood_sugar_suppresses_blood_via_manual_override(self, registry):
+        """'blood sugar' is in manual_override_terms."""
+        hit = registry.find_trigger("blood sugar in Houston")
+        if hit is not None:
+            assert hit[0] != "blood"
+
+    def test_blood_clot_suppresses_blood_via_manual_override(self, registry):
+        """'blood clot' is in manual_override_terms — defers to specific thrombosis options."""
+        hit = registry.find_trigger("blood clot in leg")
+        if hit is not None:
+            assert hit[0] != "blood"
+
+    # ---- Word-boundary protection (\b) ----
+
+    @pytest.mark.parametrize(
+        "trigger,non_match_query",
+        [
+            ("bone", "trombone concert tickets"),       # 'bone' inside 'trombone'
+            ("skin", "skinned knee research"),          # 'skinned' is a different word
+            ("limb", "climbing endurance"),             # 'limb' inside 'climbing'
+            ("vessel", "naval vessel logistics"),       # word-bounded but non-clinical;
+                                                       # vessel still fires by design
+        ],
+    )
+    def test_word_boundary_prevents_substring_false_fires(
+        self, registry, trigger, non_match_query
+    ):
+        """\\b boundary prevents the trigger from matching as a substring of a longer word.
+
+        Note: for 'vessel' the query IS a legitimate word match, so it WILL fire — the
+        case documents the by-design behavior (we accept the FP risk in clinical-query
+        context).
+        """
+        hit = registry.find_trigger(non_match_query)
+        if trigger == "vessel":
+            # Word boundary HOLDS — vessel is a real word in the query, so it fires.
+            assert hit is not None and hit[0] == "vessel"
+        else:
+            # Substring inside a longer word must NOT fire.
+            if hit is not None:
+                assert hit[0] != trigger, (
+                    f"Trigger {trigger!r} matched as a substring inside a longer word"
+                )
+
+    # ---- Registry validation acceptance: all options resolve at ≥0.85 ----
+
+    def test_strict_validation_loads_all_new_triggers(self):
+        """Strict validation must load every new trigger — no SystemExit raised."""
+        # If any option failed ≥0.85 resolution, strict-init would have sys.exit(1)
+        # before this test runs. Reaching this line proves all options resolved.
+        registry = _make_registry(strict=True)
+        for trigger in self.NEW_TRIGGERS:
+            assert trigger in registry._entries
 
 
 # ---------------------------------------------------------------------------
