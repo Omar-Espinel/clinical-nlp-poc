@@ -1,23 +1,24 @@
 # Clinical Research NLP — Project Context
 
-## Status: ACTIVE / COMPLETE INITIAL BUILD · Rework spec drafted
-## Last Updated: 2026-05-06
+## Status: ACTIVE · v2 rework merged
+## Last Updated: 2026-05-13
 ## Platform: Python 3.13 · Windows 11 · Streamlit
 
 ---
 
 ## What This Project Does
 
-Takes a free-text natural language query from a clinical researcher and returns:
-1. **SNOMED CT concepts** — code, display name, confidence score, match type, negation flag
-2. **Structured search filters** — investigator name, site name, city, state(s), study phase
+Takes a free-text natural language query from a clinical researcher and returns either:
+1. **A search result** — SNOMED CT concepts + structured filters (investigator, site, city, state, phase), or
+2. **A clarification question** — when the query contains an ambiguous trigger (e.g. bare "cancer") or filters but no clinical condition. Up to 3 clarification turns per session.
 
 Example input:
 > "Dr. Johnson's Phase 3 type 2 diabetes research in NYC, glucose management trials at Mount Sinai"
 
-Example output (abbreviated):
+Example output (search path, abbreviated):
 ```json
 {
+  "type": "search",
   "snomed_terms": [
     {"code": "44054006", "display": "type 2 diabetes mellitus", "confidence": 0.99, "match_type": "exact"},
     {"code": "182021000", "display": "glucose monitoring", "confidence": 0.97, "match_type": "synonym"}
@@ -32,7 +33,19 @@ Example output (abbreviated):
 }
 ```
 
-This is a **proof-of-concept** for Advarra. It is not connected to any clinical trial database — it only parses and structures the query. The output is intended to feed a downstream search/filter system.
+Example output (clarification path):
+```json
+{
+  "type": "clarification",
+  "question": "Which type of cancer are you looking for?",
+  "options": ["Lung Cancer", "Breast Cancer", "Colorectal Cancer", "Lymphoma", "Melanoma"],
+  "canonical_query": "cancer in Boston phase 3",
+  "turn_number": 1,
+  "max_turns": 3
+}
+```
+
+This is a **proof-of-concept** for Advarra. Output is intended to feed a downstream search/filter system. No real PHI or clinical-trial DB is touched.
 
 ---
 
@@ -48,36 +61,83 @@ C:\Claude work\advarra\clinical-nlp-poc\
 
 ```
 clinical-nlp-poc/
-├── CONTEXT.md                    ← YOU ARE HERE — read this before touching anything
-├── app.py                        ← Streamlit UI (290 lines)
-├── requirements.txt              ← Pinned dependencies
-├── README.md                     ← HuggingFace Spaces config + user docs
-├── DEPLOYMENT.md                 ← Step-by-step local + HF deploy guide
-├── .env.example                  ← Template: copy to .env and add GROQ_API_KEY
-├── .env                          ← NEVER COMMIT — contains live API key
-├── .gitignore                    ← Includes .env, __pycache__, chroma_db, etc.
+├── context.md                       ← YOU ARE HERE — read before touching anything
+├── app.py                           ← Streamlit chat UI (465 lines)
+├── requirements.txt                 ← Pinned dependencies (incl. pyahocorasick)
+├── README.md                        ← HF Spaces config + user docs
+├── DEPLOYMENT.md                    ← Local + HF deploy guide
+├── .env / .env.example              ← GROQ_API_KEY only; .env never committed
+├── .gitignore
+│
 ├── src/
-│   ├── __init__.py               ← Empty
-│   ├── preprocessor.py           ← Input validation, injection/harmful content detection (~168 lines)
-│   ├── extractor.py              ← Groq LLM call + JSON parsing (275 lines)
-│   ├── snomed_resolver.py        ← 4-step SNOMED matching cascade (372 lines)
-│   ├── geo_normalizer.py         ← City/state/region normalization (166 lines)
-│   ├── assembler.py              ← Pydantic v2 output assembly (155 lines)
-│   └── pipeline.py               ← Single orchestration entry point (115 lines)
+│   ├── __init__.py
+│   ├── preprocessor.py              ← ~77 regex injection/harmful patterns + assert_safe (178 lines)
+│   ├── pipeline.py                  ← NLPPipeline.run_with_session() — orchestrator (486 lines)
+│   ├── conversation.py              ← ConversationSession, Turn (295 lines)
+│   ├── sufficiency_gate.py          ← SufficiencyGate, AmbiguousTermsRegistry, AmbiguousEntry,
+│   │                                  DEFAULT_CONDITION_PROMPT, MetricAmbiguityGate (1088 lines)
+│   ├── filter_extractor.py          ← Filter-only LLM extraction (197 lines)
+│   ├── assembler.py                 ← NLPOutput | ClarificationOutput (238 lines)
+│   ├── exceptions.py                ← LLMProviderError, PipelineError, StrategyError,
+│   │                                  ExtractionError (42 lines)
+│   │
+│   ├── llm_provider/                ← LLM provider abstraction
+│   │   ├── base.py                  ← LLMProvider Protocol
+│   │   ├── groq_provider.py         ← GroqProvider (only file importing `groq`)
+│   │   └── registry.py              ← get_provider() factory, env LLM_PROVIDER
+│   │
+│   ├── snomed_search/               ← Pluggable SNOMED strategies
+│   │   ├── base.py                  ← SNOMEDSearchStrategy Protocol + SNOMEDMatch dataclass
+│   │   ├── hybrid_cascade.py        ← exact → synonym → fuzzy → semantic (default, 593 lines)
+│   │   ├── aho_corasick.py          ← AhoCorasickStrategy (136 lines)
+│   │   ├── ngram_lookup.py          ← NGramLookupStrategy (128 lines)
+│   │   ├── negation.py              ← NegEx NegationAnnotator (231 lines)
+│   │   └── registry.py              ← get_strategy() factory, env SNOMED_SEARCH_STRATEGY
+│   │
+│   ├── normalizers/
+│   │   ├── base.py                  ← FilterNormalizer Protocol
+│   │   └── geo.py                   ← GeoNormalizer + GeoResult (166 lines)
+│   │
+│   ├── extractor.py                 ← OBSOLETE-AT-SCALE shim (legacy combined extractor)
+│   ├── snomed_resolver.py           ← OBSOLETE-AT-SCALE shim (legacy 4-step cascade)
+│   └── geo_normalizer.py            ← OBSOLETE-AT-SCALE re-export shim
+│
 ├── data/
-│   ├── snomed_clinical_trials.csv ← 116 SNOMED concepts with synonyms
-│   └── geo_canonical.json         ← 200+ cities, all US states + CA provinces, 59 regions
+│   ├── snomed_clinical_trials.csv   ← 116 SNOMED concepts with synonyms
+│   ├── geo_canonical.json           ← 200+ cities, US states + CA provinces, 59 regions
+│   ├── ambiguous_terms.json         ← Triggers → clarification options (validated at startup)
+│   └── metric_filters.json          ← 12 Advarra-specific metric fields (AC automaton)
+│
 ├── tests/
-│   ├── test_cases.json           ← 20 structured regression tests
-│   ├── run_tests.py              ← Regression test runner (exit 0 if ≥15 pass)
-│   ├── batch_test_cases.csv      ← 100 evaluation scenarios (edit to customize)
-│   └── batch_eval.py             ← Batch runner: outputs metrics CSV + summary table (343 lines)
-├── qa_testing/                    ← QA-driven test agent + large case sets (added 2026-05-06)
-│   ├── test_agent.py             ← Rate-limited test runner with markdown report (497 lines)
-│   ├── test_cases_202.json       ← 202-case curated test set (default input)
-│   └── test_cases_1000.json      ← 1000-case extended test set
-├── rework-nlp-proposal.md         ← Architectural proposal for v2 pipeline (added 2026-05-06)
-└── rework-nlp-impl-spec.md        ← Pseudocode implementation spec for v2 (added 2026-05-06)
+│   ├── run_tests.py                 ← OBSOLETE-AT-SCALE: 20-case regression suite
+│   ├── test_cases.json              ← 20 regression cases
+│   ├── batch_eval.py                ← Batch runner: --strategy, --legacy, --limit (520 lines)
+│   ├── batch_test_cases.csv         ← 107 evaluation scenarios
+│   ├── test_sufficiency_gate.py     ← Gate unit tests (506 lines)
+│   ├── test_conversation.py         ← Multi-turn regression (614 lines)
+│   ├── test_snomed_strategies.py    ← Cross-strategy parity (386 lines)
+│   ├── test_negation.py             ← NegEx tests (169 lines)
+│   ├── test_llm_provider.py         ← Provider abstraction tests with mock (163 lines)
+│   ├── test_ambiguity_coverage.py   ← Layer 1 + Layer 2 + B6 fix tests (434 lines)
+│   ├── test_metric_filters.py       ← 12-field metric filter tests (97 cases, 9 groups)
+│   └── conftest.py                  ← Rapidfuzz version assertion
+│
+├── qa_testing/                       ← QA-driven test agent + large case sets
+│   ├── test_agent.py                ← Rate-limited runner with markdown report (497 lines)
+│   ├── test_cases_202.json          ← 202-case curated set (default)
+│   └── test_cases_1000.json         ← 1000-case extended set
+│
+├── rework-nlp-proposal.md           ← Architectural proposal (revision 2) for v2 pipeline
+├── rework-nlp-impl-spec.md          ← Pseudocode implementation spec for v2
+├── rework-metric-filters-v2.md      ← Advarra metric field definitions + test plan rev2
+├── modified-proposal.md             ← Predecessor proposal (historical)
+├── response-branch-spec.md          ← Branch-specific spec (historical)
+├── README response.md               ← Branch-specific README (historical)
+├── test_results.md                  ← Latest QA agent results dump
+├── results-review.md                ← Review notes on test results
+├── gen_block_diagram.py             ← Helper: generates block-diagram.png
+├── gen_flow_diagram.py              ← Helper: generates flow-diagram.png
+├── block-diagram.png / flow-diagram.png  ← Architecture diagrams
 ```
 
 ---
@@ -85,29 +145,34 @@ clinical-nlp-poc/
 ## How to Run
 
 ```bash
-# Install dependencies (Python 3.13 required)
+# Install (Python 3.13 required)
 pip install -r requirements.txt
 
 # Add API key
 cp .env.example .env
 # Edit .env: GROQ_API_KEY=your_key_here
 
-# Start the app
-streamlit run app.py
-# → http://localhost:8501
+# Start the chat UI
+streamlit run app.py    # → http://localhost:8501
 
-# Run 20 regression tests
+# Legacy regression tests (kept for compatibility; OBSOLETE-AT-SCALE)
 python tests/run_tests.py
 
-# Run 100 batch evaluation cases
+# Batch evaluation
 python tests/batch_eval.py
-python tests/batch_eval.py --limit 10     # quick smoke test
-python tests/batch_eval.py --input tests/batch_test_cases.csv --output tests/results/
+python tests/batch_eval.py --limit 10
+python tests/batch_eval.py --strategy aho_corasick     # try alt strategy
+python tests/batch_eval.py --legacy                    # bypass multi-turn
 
-# Run the QA test agent (202-case default, rate-limited for Groq free tier)
+# v2 unit tests (pytest)
+pytest tests/test_sufficiency_gate.py tests/test_conversation.py \
+       tests/test_snomed_strategies.py tests/test_negation.py \
+       tests/test_llm_provider.py tests/test_ambiguity_coverage.py
+
+# QA agent (rate-limited for Groq free tier)
 python qa_testing/test_agent.py
-python qa_testing/test_agent.py --limit 20            # smoke test
-python qa_testing/test_agent.py --category injection  # single category
+python qa_testing/test_agent.py --limit 20
+python qa_testing/test_agent.py --category injection
 python qa_testing/test_agent.py --input qa_testing/test_cases_1000.json
 ```
 
@@ -117,574 +182,670 @@ python qa_testing/test_agent.py --input qa_testing/test_cases_1000.json
 
 | Package | Version | Purpose |
 |---|---|---|
-| streamlit | 1.40.0 | Web UI |
-| groq | 0.11.0 | LLM API client |
-| sentence-transformers | 3.2.1 | Embedding model (all-MiniLM-L6-v2) |
+| streamlit | 1.40.0 | Chat UI |
+| groq | 0.11.0 | LLM API client (used only inside `groq_provider.py`) |
+| sentence-transformers | 3.2.1 | Embedding model `all-MiniLM-L6-v2` |
 | rapidfuzz | 3.10.0 | Fuzzy string matching |
-| pydantic | 2.9.2 | Output data models (V2 syntax only) |
+| pyahocorasick | ≥ 2.0.0 | AhoCorasickStrategy automaton |
+| pydantic | 2.9.2 | All output models (V2 syntax only) |
 | pandas | 2.2.3 | CSV loading |
 | torch | 2.6.0 | Required by sentence-transformers |
-| numpy | 2.1.0 | Required by sentence-transformers + fallback semantic search |
+| numpy | 2.1.0 | Required by sentence-transformers + semantic-search fallback |
 | python-dotenv | 1.0.1 | .env loading |
 | httpx | 0.27.2 | HTTP client |
 | chromadb | *(optional)* | Vector DB — soft dependency, see below |
 
-**IMPORTANT — chromadb is NOT in requirements.txt.** It was removed because `chroma-hnswlib` requires Microsoft C++ Build Tools to compile on Windows and has no Python 3.13 wheel. The code tries to `import chromadb` at runtime; if it fails, it falls back to pure-numpy cosine similarity (same quality for our ~116-term dataset). If a teammate has C++ Build Tools installed, they can `pip install chromadb==0.6.3` and it will be used automatically. No code changes needed.
+**chromadb is NOT in requirements.txt.** `chroma-hnswlib` needs MS C++ Build Tools on Windows and has no Py 3.13 wheel. The code tries `import chromadb` at runtime; on failure it falls back to numpy cosine similarity (same quality for our ~116-term dataset). If a teammate installs `chromadb==0.6.3`, it's used automatically — no code changes.
 
-**IMPORTANT — Python 3.13 compatibility.** The pinned versions of torch (2.6.0) and numpy (2.1.0) are specifically chosen for Python 3.13. The original spec had torch==2.2.2 and numpy==1.26.4 which only support up to Python 3.12.
+**Python 3.13 compatibility.** `torch==2.6.0` and `numpy==2.1.0` are chosen for Py 3.13. Original spec had `torch==2.2.2`/`numpy==1.26.4` which only support up to Py 3.12.
 
-**IMPORTANT — Pydantic V2 only.** All models use `model_config = ConfigDict(...)`, `model_dump()`, never `.dict()` or `class Config`. Do not revert to V1 syntax.
-
----
-
-## Architecture: Full Pipeline Data Flow
-
-```
-User query (raw string)
-        │
-        ▼
-┌─────────────────────────────────────────────────────┐
-│ src/preprocessor.py :: Preprocessor.process()        │
-│  • Length check (3–500 chars)                        │
-│  • ~77 regex patterns (injection, harmful content)   │
-│  → PreprocessedInput(text, original, char_count)    │
-└─────────────────────┬───────────────────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────────────────┐
-│ src/extractor.py :: Extractor.extract()              │
-│  • Calls Groq API: llama-3.1-8b-instant              │
-│  • Temperature 0.0, max_tokens 1024, timeout 10s     │
-│  • 3 retries with exponential backoff (1s, 2s, 4s)  │
-│  • Parses JSON response into typed dataclasses       │
-│  • Validates required keys before returning          │
-│  → ExtractionResult(medical_terms, investigator,     │
-│                     site, city, state, phase,        │
-│                     raw_response)                    │
-└───────────┬─────────────────────┬───────────────────┘
-            │                     │
-            ▼                     ▼
-┌───────────────────┐   ┌─────────────────────────────┐
-│ src/snomed_       │   │ src/geo_normalizer.py ::     │
-│ resolver.py ::    │   │ GeoNormalizer.normalize()    │
-│ SNOMEDResolver    │   │  • Exact city key lookup     │
-│ .resolve()        │   │  • Exact region key lookup   │
-│  4-step cascade:  │   │  • Fuzzy city match (≥82)    │
-│  1. exact_match   │   │  • State abbreviation lookup │
-│  2. synonym_match │   │  → GeoResult(                │
-│  3. fuzzy (≥88)   │   │      city: Optional[str],    │
-│  4. semantic      │   │      states: list[str],  ←KEY│
-│  → list[SNOMED    │   │      is_region: bool,        │
-│       Match]      │   │      confidence: float)      │
-└──────────┬────────┘   └──────────────┬──────────────┘
-           │                           │
-           └─────────────┬─────────────┘
-                         ▼
-┌─────────────────────────────────────────────────────┐
-│ src/pipeline.py :: NLPPipeline.run()                 │
-│  • Clinical intent validation (SECURITY):            │
-│    if 0 medical_terms AND 0 non-null filters →       │
-│    raise PreprocessorError("No clinical content")   │
-│  • Orchestrates all components above                 │
-└─────────────────────┬───────────────────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────────────────┐
-│ src/assembler.py :: ResponseAssembler.assemble()     │
-│  • Excludes negated SNOMED terms from output         │
-│  • Counts negated_terms_excluded in metadata         │
-│  • Applies geo if confidence ≥ 0.60                  │
-│  • Uses Pydantic V2 models (frozen=True)             │
-│  → NLPOutput (see Output Schema below)              │
-└─────────────────────────────────────────────────────┘
-```
+**Pydantic V2 only.** `model_config = ConfigDict(...)`, `model_dump()`. Never `.dict()` or `class Config`.
 
 ---
 
-## Output Schema (current)
+## Architecture: Full Pipeline (v2)
+
+```
+User query (raw string)              ┌─────────────────────────────────────────┐
+        │                            │ ConversationSession (st.session_state)  │
+        ▼                            │  • session_id (uuid4)                   │
+┌─────────────────────────────────┐  │  • turns: list[Turn]                    │
+│ Preprocessor.process()          │  │  • canonical_query (merged)             │
+│  • Length 3–500                 │  │  • is_max_turns_reached() — hard cap 3  │
+│  • ~77 injection/harmful regex  │  └─────────────────────────────────────────┘
+│  • Null-byte strip first        │                  ▲       ▲
+└──────────┬──────────────────────┘                  │       │ (read/append)
+           │                                         │       │
+           ▼                                         │       │
+session.compute_canonical_query() — pure merge ──────┘       │
+substitute-or-append (clarification answer substitutes       │
+the previous trigger; free-text appends)                     │
+           │                                                 │
+           ▼                                                 │
+Preprocessor.assert_safe(canonical)  — defense-in-depth      │
+           │                                                 │
+           ▼                                                 │
+session.set_canonical_query(canonical)  — mutator ───────────┘
+           │
+           ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ SufficiencyGate.evaluate(canonical, session)  — DETERMINISTIC, no LLM   │
+│  1. max-turns escape valve → sufficient=True                            │
+│  2. AmbiguousTermsRegistry.find_trigger() → if hit & no override:       │
+│     sufficient=False, reason="ambiguous_trigger"                        │
+│  3. default → sufficient=True                                           │
+└────────────┬────────────────────────────────────────────────────────────┘
+             │
+             │  sufficient=False ─────────┐
+             │                            ▼
+             │                ResponseAssembler.build_clarification()
+             │                            │
+             │                            ▼
+             │                ClarificationOutput → UI (chat message + buttons)
+             │
+             │  sufficient=True
+             ▼
+┌────────────────────────────┐    ┌───────────────────────────────────────┐
+│ Path A — LLM filter        │    │ Path B — Algorithmic SNOMED           │
+│ FilterExtractor.extract()  │    │ SNOMEDSearchStrategy.search()         │
+│   via LLMProvider          │    │   default: HybridCascadeStrategy      │
+│ → ExtractedFilters         │    │   alternatives: aho_corasick,         │
+│   (investigator, site,     │    │                 ngram_lookup          │
+│    city, state, phase)     │    │ → list[SNOMEDMatch] with char spans   │
+└────────────┬───────────────┘    └────────────────┬──────────────────────┘
+             │                                     │
+             └──────────────┬──────────────────────┘
+                            │  ThreadPoolExecutor.submit()
+                            │  joined via futures.wait(ALL_COMPLETED, timeout=15s)
+                            │  on timeout → PipelineError("extraction_timeout")
+                            ▼
+            NegationAnnotator.annotate()  — NegEx, deterministic
+            (pre/post cues, 5-token window, pseudo-negation suppressed,
+             comma does NOT stop scan; period/;/!/?/newline do)
+                            │
+                            ▼
+            EmbeddingAmbiguityGate.evaluate()  — Step 5b, deterministic
+            Signal A: 0 high-conf + ≥3 mid-band embedding neighbors (0.42..0.60)
+            Signal B: ≥3 high-conf matches with conf spread < 0.08
+                → ClarificationOutput (triggered_by=None, append-mode)
+            else → None, fall through
+            (no-op for strategies without get_top_neighbors)
+                            │
+                            ▼
+            Clinical-intent gate (every turn)
+            if 0 qualifying SNOMED (conf ≥ 0.60, not negated) AND 0 filters set
+                → PreprocessorError("No clinical content found.")
+                            │
+                            ▼
+            SufficiencyGate.post_extraction_check()
+            if filters set AND 0 qualifying SNOMED matches
+                → sufficient=False, reason="filters_without_condition"
+                → ClarificationOutput (DEFAULT_CONDITION_PROMPT)
+                            │
+                            ▼
+            GeoNormalizer.normalize(city, state_value_for_geo(state_filter))
+            (state.values: list[str] schema preserved for multi-state regions)
+                            │
+                            ▼
+            Preprocessor.assert_safe(canonical)  — belt-and-suspenders
+                            │
+                            ▼
+            ResponseAssembler.assemble() → NLPOutput(type="search", ...)
+                            │
+                            ▼
+            session.append_turn(...)  — APPEND ONLY AFTER successful assembly
+                            │
+                            ▼
+            UI renders results in st.chat_message
+```
+
+**Discriminated union output:** every pipeline call returns `NLPOutput | ClarificationOutput`, distinguished by the `type` literal field.
+
+**Per-turn structured log line (JSON):** `ts`, `session_id`, `turn_index`, `clarification_count`, `path` (`sufficiency_clarification` | `max_turns` | `embedding_ambiguity_clarification` | `clinical_intent` | `post_extraction_safety` | `metric_ambiguity_clarification` | `search`), `decision_reason`, `snomed_match_count`, `snomed_strategy`, `filter_count`, `llm_provider`, `processing_time_ms`, `metric_match_count`, `metric_resolved_count`. **Never logged:** any raw text, canonical query, filter values, SNOMED display strings, LLM response, trigger values, option text.
+
+---
+
+## Output Schema
 
 ```python
+ResponseOutput = Annotated[Union[NLPOutput, ClarificationOutput], Field(discriminator="type")]
+
 NLPOutput
+├── type: Literal["search"] = "search"
 ├── snomed_terms: list[SNOMEDTermOutput]
 │   └── SNOMEDTermOutput
-│       ├── code: str                 # SNOMED concept ID e.g. "44054006"
-│       ├── display: str              # lowercase preferred_term from CSV
-│       ├── match_type: str           # "exact" | "synonym" | "fuzzy" | "semantic"
-│       ├── confidence: float         # 0.0–1.0
-│       ├── original_text: str        # what the LLM extracted
-│       └── negated: bool             # always False here (negated ones excluded)
-│
+│       ├── code: str            # SNOMED concept ID
+│       ├── display: str         # lowercase preferred_term
+│       ├── match_type: str      # "exact" | "synonym" | "fuzzy" | "semantic" | "ngram"
+│       ├── confidence: float    # 0.0–1.0
+│       ├── original_text: str
+│       └── negated: bool        # always False here; negated matches excluded
 ├── filters: FiltersOutput
 │   ├── investigator_name: FilterFieldOutput  → value: Optional[str], confidence: float
-│   ├── site_name: FilterFieldOutput          → value: Optional[str], confidence: float
-│   ├── city: FilterFieldOutput               → value: Optional[str], confidence: float
+│   ├── site_name: FilterFieldOutput
+│   ├── city: FilterFieldOutput
 │   ├── state: StateFilterOutput              ← DIFFERENT from other filters
-│   │   ├── values: list[str]    # 1 item for city/state queries, 15 items for "east coast"
+│   │   ├── values: list[str]    # 1 for city/state; many for "east coast"
 │   │   ├── confidence: float
-│   │   └── is_region: bool      # True when values has multiple states
-│   └── phase: FilterFieldOutput              → value: Optional[str], confidence: float
-│
+│   │   └── is_region: bool
+│   └── phase: FilterFieldOutput
 └── metadata: MetadataOutput
     ├── processing_time_ms: int
     ├── total_snomed_matches: int
-    ├── snomed_match_types: dict[str, int]   # {"exact": 1, "synonym": 2, ...}
+    ├── snomed_match_types: dict[str, int]
     └── negated_terms_excluded: int
+
+ClarificationOutput
+├── type: Literal["clarification"] = "clarification"
+├── question: str               # html.escape'd
+├── options: list[str]          # each html.escape'd
+├── canonical_query: str        # html.escape'd; for transparency
+├── turn_number: int            # 1-indexed clarification turn
+├── max_turns: int = 3
+└── metadata: MetadataOutput
 ```
 
-**CRITICAL: `state` uses `StateFilterOutput` with `values: list[str]`, NOT `FilterFieldOutput` with `value: Optional[str]`.** Any code that reads state must use `output.filters.state.values` (a list), never `.value`. This was changed after initial build to support multi-state regional queries.
+**CRITICAL:** `state` uses `StateFilterOutput` with `values: list[str]`, NOT a single `.value`. Always read `output.filters.state.values`.
 
 ---
 
 ## Component Reference
 
-### src/preprocessor.py
-**Class:** `Preprocessor`
-**Key method:** `process(raw_input: str) -> PreprocessedInput`
+### `src/preprocessor.py` — `Preprocessor`
+- `process(raw: str) -> PreprocessedInput` — length check (3–500), null-byte strip, ~77 injection/harmful regex patterns, SYSTEM-prefix anchor (`\A`).
+- `assert_safe(text: str) -> None` — runs the injection-pattern subset only (no length check) on a merged canonical query. Used by pipeline as defense-in-depth.
+- Raises `PreprocessorError` with user-safe messages: `"Query must be at least 3 characters"`, `"Query must be under 500 characters"`, `"Invalid query detected"`, `"No clinical content found. Please enter a query about a medical condition, investigator, research site, location, or study phase."` (last is raised in pipeline, not preprocessor).
+- Pattern coverage: prompt injection, code/script injection, data exfiltration, social engineering, LLM special tokens (`[INST]`, `<<SYS>>`), template/SSTI, HTTP header injection, XML tags, path traversal (Unix + Windows), SQL injection, WMD/weapon synthesis (verb-noun: make/build/create + weapon/bomb/firearm), controlled-substance manufacturing (cook/make/grow + drug nouns), child safety, self-harm (incl. "how to commit suicide", "ways to end my/your life"), poison-as-attack, cybercrime (write/create/develop + malware/exploit).
 
-Blocks:
-- Queries shorter than 3 or longer than 500 characters
-- ~77 regex patterns in 10 groups: prompt injection, code/script injection, data exfiltration, social engineering, LLM special tokens ([INST]/<<SYS>>), template/SSTI injection, HTTP header injection, XML tag injection, path traversal (Unix + Windows), SQL injection, WMD/weapon synthesis (including verb-noun attacks: make/build/create + weapon/bomb/firearm), controlled-substance manufacturing (including cook/make/grow + drug nouns), child safety violations, self-harm guides (including how to commit suicide, ways to end my/your life), poison-as-attack-verb, cybercrime (including write/create/develop + malware/exploit)
-- Null bytes (`\x00`) stripped as the first step in `process()`, before length check and injection check
-- SYSTEM prefix pattern (`\ASYSTEM`) compiled separately to anchor at absolute string start
-- Raises `PreprocessorError` with user-safe messages (no internal details)
+### `src/conversation.py` — `ConversationSession`, `Turn`
+- Pydantic V2. `Turn` is `frozen=True`; `ConversationSession` is `frozen=False`.
+- `Turn`: `turn_index`, `user_input`, `canonical_query`, `decision: Optional[SufficiencyDecision]`, `filters: Optional[ExtractedFilters]`, `snomed_matches: list[SNOMEDMatch]`, `geo: Optional[GeoResult]`, `timestamp`. Clarification turns have filters/geo None and empty snomed_matches.
+- Methods: `new()` (uuid4 + ts), `append_turn(t)`, `compute_canonical_query(input) -> str` (pure), `set_canonical_query(q)` (mutator), `update_canonical_query(input)` (compute+set convenience), `clarification_turn_count()`, `is_max_turns_reached()` (≥ `max_clarification_turns`, default 3), `summarize_known_filters()`, `to_dict()`, `from_dict(d, on_error="raise"|"new_session")`, `summary_for_logging()` (the ONLY safe method for logging session state — `to_dict()`/`repr()` MUST NEVER be logged).
+- Canonical-query merge: if last turn was a clarification with `triggered_by=T`, substitute T with the new input (case-insensitive whole-word `\b`, **literal replacement via `lambda _m: user_input` — B6 fix**); else append. M2 split: `compute_*` runs before `assert_safe()`; `set_*` only after it passes.
 
-Error messages (exact strings, tests may depend on these):
-- `"Query must be at least 3 characters"`
-- `"Query must be under 500 characters"`
-- `"Invalid query detected"`
-- `"No clinical content found. Please enter a query about a medical condition, investigator, research site, location, or study phase."` ← raised in pipeline.py, not preprocessor
+### `src/sufficiency_gate.py` — `SufficiencyGate`, `AmbiguousTermsRegistry`, `AmbiguousEntry`, `SufficiencyDecision`, `EmbeddingAmbiguityGate`, `DEFAULT_CONDITION_PROMPT`, `_count_set_filters()`, `_any_filter_set()`
+- `SufficiencyDecision` (frozen): `sufficient: bool`, `reason: str` (enum: `ok_no_trigger`, `ambiguous_trigger`, `max_turns_reached`, `ok_post_extraction`, `filters_without_condition`, `legacy_bypass`), `triggered_by: Optional[str]`, `matched_entry: Optional[AmbiguousEntry]`.
+- `AmbiguousTermsRegistry.__init__(path, snomed_strategy, snomed_csv_path, strict_validation)` — validates EVERY option in `ambiguous_terms.json` resolves through the strategy at confidence ≥ 0.85. `strict_validation=True` → `sys.exit(1)` on failure (default, for POC/CI). `False` → log warn, drop trigger (for production rolling deploys). Empty registry after validation → raises `ValueError` even when lenient.
+- **Layer 1 derived triggers** (post-JSON-load, in `__init__`): `_build_derived_entries(csv_path)` scans `preferred_term` column for single tokens passing length (≥`MIN_DERIVED_TOKEN_LEN=4`), stopword (27 entries incl. "human"), and frequency (≥`MIN_DERIVED_TERM_FREQUENCY=2`) gates. Synthesizes one `AmbiguousEntry` per qualifying token with matching CSV rows as options. `_merge_entries(json, derived)` unions; **hand-curated JSON wins on key collision** (logged). Options use raw lowercase CSV values (no `.title()` — preserves acronyms). Derived `override_terms` include CSV preferred_terms + synonyms containing the token (suppresses compound queries like "lung cancer" from firing the bare "lung" trigger). Derive failures gracefully fall back to JSON-only regardless of `strict_validation`.
+- Trigger detection: single compiled regex with longest-first alternation, `\b` whole-word, `re.IGNORECASE`. `find_trigger(query)` returns `(trigger, entry)` for first hit whose override terms are absent.
+- Override-terms auto-derivation: every `option` lowercased + every CSV `preferred_term` containing the trigger as a whole-word substring. **Self-defeat guard:** drop any override equal to the trigger itself. Manual `manual_override_terms` from JSON are unioned in.
+- `SufficiencyGate.evaluate(canonical, session)`: 3 rules — max-turns → registry trigger → default sufficient. Does NOT call LLM or SNOMED.
+- `SufficiencyGate.post_extraction_check(matches, filters)`: returns `filters_without_condition` (with `DEFAULT_CONDITION_PROMPT` as matched_entry) iff ≥1 filter is set AND 0 SNOMED matches qualify (conf ≥ 0.60 and not negated).
+- `DEFAULT_CONDITION_PROMPT`: built lazily on first `SufficiencyGate.__init__` (NOT module-import time — `snomed_csv_path` is passed in). Top-5 categories derived from CSV preferred-terms clustered against `_CATEGORY_SEEDS` (Cancer, Diabetes, Heart Disease, Autoimmune, Neurological). Hard fallback on CSV failure: `["Cancer", "Diabetes", "Heart Disease", "Autoimmune", "Other"]`. Memoized on the class.
+- `EmbeddingAmbiguityGate(strategy)` — **Layer 2**, pipeline step 5b. Duck-types `hasattr(strategy, "get_top_neighbors")` at init; gate silently no-ops on strategies without an embedder (`aho_corasick`, `ngram_lookup`). `evaluate(canonical, snomed_matches) -> Optional[SufficiencyDecision]` MUST receive post-`NegationAnnotator` matches (filters negated internally). **Signal A** (rare-term): 0 high-conf (`< MIN_CONFIDENCE`) AND ≥`LAYER2_MIN_NEIGHBORS=3` mid-band embedding neighbors in `[LAYER2_LOW_THRESHOLD=0.42, MIN_CONFIDENCE)` → clarification with neighbors as options. **Signal B** (genuine ambiguity): ≥`LAYER2_MIN_GENUINE_AMBIG=3` high-conf matches AND `max(conf) - min(conf) < LAYER2_SPREAD_THRESHOLD=0.08` → clarification with top-5 matches as options. Returns `None` (gate falls through to clinical-intent gate) otherwise. **Always sets `triggered_by=None`** → canonical merge uses append-mode (no lossy single-token substitution).
 
----
+### `src/llm_provider/`
+- `base.py` — `LLMProvider` Protocol (`@runtime_checkable`): `name`, `model_id`, `complete(system_prompt, user_prompt, max_tokens, temperature, timeout, json_mode) -> str`. Raises `LLMProviderError` on unrecoverable failure.
+- `groq_provider.py` — `GroqProvider`. Default model `llama-3.1-8b-instant`. Retry policy: transient (network timeout, 429, 5xx) retried up to 3× with `[1s, 2s, 4s]` backoff; permanent (401/404/400) raises immediately. **Only file in the repo importing `groq`.**
+- `registry.py` — `PROVIDER_REGISTRY = {"groq": GroqProvider}`, `DEFAULT_PROVIDER = "groq"`. `get_provider(name=None, **kwargs)` reads `LLM_PROVIDER` env var if name omitted.
 
-### src/extractor.py
-**Class:** `Extractor`
-**Key method:** `extract(preprocessed: PreprocessedInput) -> ExtractionResult`
+### `src/filter_extractor.py` — `FilterExtractor`, `ExtractedFilters`, `FilterField`, `StateFilter`
+- LLM extracts **filters only** — no SNOMED, no medical terms, no negation. Pydantic V2 models with `frozen=True`.
+- System prompt enforces Kansas-City disambiguation (state extracted only from explicit mentions, not from city or institution names) and phase normalization rules ported from the legacy extractor.
+- `extract(canonical: str) -> ExtractedFilters` — calls `provider.complete(... json_mode=True)`, parses JSON, validates required keys, sanitizes literal `"null"` strings, raises `ExtractionError` on parse failure.
 
-- Groq model: `llama-3.1-8b-instant`, temperature 0.0
-- System prompt is ~80 lines in the module, defines abbreviation expansion, phase normalization, negation detection, confidence scoring
-- Catches `groq.RateLimitError` specifically; all other exceptions get 3 retries
-- JSON parse failures raise `ExtractionError` with a generic user-safe message
-- **Raw LLM response is NOT logged** (HIPAA) — only error type and response length
+### `src/snomed_search/`
+- `base.py` — `SNOMEDSearchStrategy` Protocol (`@runtime_checkable`) + `SNOMEDMatch` dataclass. `SNOMEDMatch.span: tuple[int, int]` is REQUIRED with `__post_init__` validation (no None, start ≥ 0, end > start).
+- `hybrid_cascade.py` — default. Cascade: exact → synonym → fuzzy (rapidfuzz token_sort_ratio, cutoff 88) → semantic (sentence-transformer + chromadb-or-numpy, threshold 0.82). Fuzzy/semantic operate on residual unmatched character spans via `_compute_residual_spans()`. Ports `ALIAS_DICTIONARY` from `snomed_resolver.py` shim during transition. Also exposes `get_top_neighbors(query, n=15, low_threshold=0.42) -> list[SNOMEDMatch]` (not part of the Protocol) for `EmbeddingAmbiguityGate` to reuse the same embedder/index for Layer 2. Returns `[]` and emits one INFO log if semantic unavailable.
+- `aho_corasick.py` — substring scan via `pyahocorasick` automaton, word-boundary post-filter, longest-match dedup. Microsecond scale.
+- `ngram_lookup.py` — 1..max_n token contiguous windows looked up in exact + synonym indexes. Pure stdlib.
+- `negation.py` — `NegationAnnotator.annotate(query, matches) -> list[SNOMEDMatch]`. NegEx pre-cues (no, not, without, denies, ...), post-cues (unlikely, ruled out, ...), pseudo-negation suppressors ("no contraindication for", "no change in", ...). Window 5 tokens. Stop chars: `.;!?\n` — **comma does NOT stop scan** (clinical syntax chains).
+- `registry.py` — `STRATEGY_REGISTRY = {"hybrid_cascade": ..., "aho_corasick": ..., "ngram_lookup": ...}`, `DEFAULT_STRATEGY = "hybrid_cascade"`. `get_strategy(name=None)` reads `SNOMED_SEARCH_STRATEGY` env var; runs `health_check()` and raises `StrategyError` if `ready=False`.
 
-Abbreviations expanded by the LLM system prompt (not by code):
-T2DM, T1DM, NSCLC, SCLC, HCC, CRC, RA, COPD, CKD, HF, CHF, HTN, MI, AFib, AF, AFL, PAD, DVT, PE, NHL, HL, AML, CML, ALL, CLL, MM, NASH, NAFLD, IBD, UC, CD, PSA, AD, PD, ALS, SLE, SSc, AS, PsA, GBM, MS
+### `src/normalizers/`
+- `base.py` — `FilterNormalizer` Protocol.
+- `geo.py` — `GeoNormalizer.normalize(city, state) -> GeoResult(city, states: list[str], country, confidence, is_region, original_city, original_state)`. Lookup order: exact city → exact region → fuzzy city (rapidfuzz token_sort_ratio cutoff 82, confidence = score/100 × 0.90). Multi-state regions return all covered states; single-state metro regions return `[state]` with `city=primary_city`. User-supplied state overrides inferred for non-regions; does NOT override `region_states` for multi-state regions.
 
-Phase normalization by LLM:
-- "phase iii", "p3", "phase-3", "pivotal" → "Phase 3"
-- "first in human", "fih" → "Phase 1"
-- "phase 1/2", "p1/2", "phase i/ii" → "Phase 1/2"
-- "phase 2b" → "Phase 2b"
+### `src/assembler.py` — `ResponseAssembler`, `render_question()`
+- `assemble(filters, snomed_matches, geo, start_time) -> NLPOutput`: sorts SNOMED by confidence desc, drops negated, dedups by code keeping highest confidence, drops matches below MIN_CONFIDENCE (0.60), applies geo if `geo.confidence ≥ 0.60` (else falls back to raw filter values, with `_INVALID_STATE_VALUES` frozenset blocking literal `"null"` from leaking).
+- `build_clarification(decision, session, start_time) -> ClarificationOutput`: calls module-level `render_question(entry, trigger, session)` with `prior_filters` substitution from `session.summarize_known_filters()`. All output strings `html.escape`'d.
+- Every output model is Pydantic V2 with `frozen=True`.
 
----
+### `src/pipeline.py` — `NLPPipeline`
+- **Primary entry point:** `run_with_session(raw_query, session) -> NLPOutput | ClarificationOutput`. 10 steps (incl. step 5b `EmbeddingAmbiguityGate`) per the diagram above.
+- **Legacy shim:** `run(raw_query) -> NLPOutput` (OBSOLETE-AT-SCALE). Wraps `run_with_session` in a fresh single-turn session. If a `ClarificationOutput` is returned (gate fired), `_assemble_best_effort_from_session` bypasses the gate and runs the extraction path so legacy callers always get an `NLPOutput`.
+- Init order: SNOMED strategy → LLM provider → `AmbiguousTermsRegistry` (needs strategy; auto-derives Layer 1 entries from CSV) → `SufficiencyGate` → `EmbeddingAmbiguityGate` (needs strategy) → `FilterExtractor` → `GeoNormalizer` → `NegationAnnotator` → `Preprocessor` → `ResponseAssembler` → `ThreadPoolExecutor(max_workers=2)`.
+- Step 5b firing path appends a `Turn` with `decision=embed_decision, filters=None, geo=None, snomed_matches=<original>` and emits `LOG_PATH_EMBEDDING_AMBIGUITY` log line. Mutation discipline preserved: turn appended after successful `build_clarification`.
+- Parallel join uses `futures.wait([...], timeout=15.0, return_when=ALL_COMPLETED)`. Timeout cancels both futures, raises `PipelineError("extraction_timeout")`. `LLMProviderError` propagates with provider name logged but never `original_error.message`. Unknown exceptions become `PipelineError("strategy_unavailable")`.
+- Mutation discipline: session.append_turn() runs ONLY after successful clarification build or final assembly. A failure in any earlier step leaves the session unchanged.
 
-### src/snomed_resolver.py
-**Class:** `SNOMEDResolver`
-**Key method:** `resolve(term: str, negated: bool) -> Optional[SNOMEDMatch]`
+### `app.py` — Streamlit chat UI
+- `@st.cache_resource` on `load_pipeline()` — pipeline initializes once per process.
+- `st.session_state["conversation"]` holds the `ConversationSession`. "New Search" sidebar button replaces it with `ConversationSession.new()`.
+- Per-turn rendering: `st.chat_message("user")` for `turn.user_input`; `st.chat_message("assistant")` renders either the search NLPOutput or the clarification question + a bulleted hint list of options. The user types their answer (free text — option text or anything else) into the existing `st.chat_input` at the bottom of the page; no per-option buttons.
+- Rate limiting (session-state based): max 5 queries / 60s window, max 30 / session. Clarifications count toward limits.
+- Escaping ownership: `ResponseAssembler.build_clarification()` (`src/assembler.py:122-124`) `html.escape`'s `question`, each `option`, and `canonical_query` before placing them into `ClarificationOutput`. `app.py` therefore renders those fields WITHOUT `_safe()` and WITHOUT `unsafe_allow_html=True`. The `_safe()` helper is still used in `_render_nlp_output()` for SNOMED/filter display strings (which are NOT pre-escaped) and at the user-input `st.chat_message` line. PHI disclaimer in sidebar + inline.
+- Errors render as assistant chat messages, not banners. `PreprocessorError` → warning style; `ExtractionError`, `LLMProviderError`, `PipelineError` → error style with generic text. Log lines use `session.summary_for_logging()` only.
 
-Resolution cascade (tries each in order, returns first match):
-1. **Exact match** — lowercase term vs `exact_index` keys (confidence 0.99)
-2. **Synonym/alias match** — validated alias dict first (0.97), then `synonym_index` (0.95)
-3. **Fuzzy match** — rapidfuzz `token_sort_ratio` against all keys, score_cutoff=88 (confidence = score/100)
-4. **Semantic match** — ChromaDB (if available) or numpy cosine similarity, threshold 0.82
-
-**Alias dictionary** — ~90 entries mapping common terms to CSV preferred_terms. ALL alias targets must exist as `preferred_term` values in the CSV. Validated at load time; invalid aliases are logged as WARNING and skipped (no crash). The "ms", "ra", "tb" abbreviations are intentionally NOT in the alias dict because they're ambiguous — the LLM handles them with context.
-
-**Semantic index** — Built at `__init__` time using sentence-transformers `all-MiniLM-L6-v2`. Two backends tried in order:
-1. ChromaDB EphemeralClient (collection name: `"snomed_clinical_trials_v1"`) — faster for large datasets
-2. Numpy cosine similarity fallback — works without C++ Build Tools, used when chromadb import fails
-
-If both fail, `semantic_available = False` and resolution continues with exact/synonym/fuzzy only.
-
-**Confidence threshold:** matches below 0.60 are discarded (not returned).
-
-**Logging:** every resolution is logged at INFO level:
-```
-Resolved "type 2 diabetes" → 44054006 via exact match
-Resolved "glucose management" → 182021000 via synonym (0.97)
-No match found for "xyz" — skipping
-```
-
----
-
-### src/geo_normalizer.py
-**Class:** `GeoNormalizer`
-**Key method:** `normalize(city: Optional[str], state: Optional[str]) -> GeoResult`
-
-**IMPORTANT CHANGE from initial design:** `GeoResult.state: Optional[str]` was changed to `GeoResult.states: list[str]` to support multi-state regional queries.
-
-Lookup order for city input:
-1. Exact key match in `cities` dict → confidence 1.0
-2. Exact key match in `regions` dict → confidence 0.95, `is_region=True`
-3. Fuzzy match against `cities` keys using token_sort_ratio, cutoff=82 → confidence = (score/100) × 0.90
-
-Region behavior:
-- **Single-state metro regions** (bay area, silicon valley, research triangle, etc.): `states = [state]`, `city = primary_city`
-- **Multi-state geographic regions** (east coast, west coast, midwest, etc.): `states = [all covered states]`, `city = None`
-
-State input: if provided, looked up via abbreviation or full name. For non-region results, user-supplied state overrides inferred state. For multi-state regions, user-supplied state does NOT override `region_states` (the region definition is more informative).
-
----
-
-### src/assembler.py
-**Class:** `ResponseAssembler`
-**Key method:** `assemble(...) -> NLPOutput`
-
-- Sorts `snomed_matches` by confidence descending before processing
-- Excludes negated SNOMED matches from `snomed_terms` (counts them in `negated_terms_excluded`)
-- Deduplicates `snomed_terms` by SNOMED code, keeping the highest-confidence match per code
-- Applies geo values if `geo.confidence >= 0.60`, otherwise falls back to raw LLM-extracted values
-- State fallback validates against `_INVALID_STATE_VALUES` frozenset before wrapping in list — prevents literal `"null"` string from leaking into `StateFilterOutput`
-- All output models are Pydantic V2 with `frozen=True`
-
----
-
-### src/pipeline.py
-**Class:** `NLPPipeline`
-**Key method:** `run(raw_query: str) -> NLPOutput`
-
-Single entry point used by both `app.py` and `tests/run_tests.py`. Initializes all components once in `__init__`. The `run()` method:
-1. Calls preprocessor
-2. Calls extractor
-3. **Clinical intent validation** (security layer): raises `PreprocessorError` if extraction yields 0 medical terms AND 0 non-null filters
-4. Resolves SNOMED terms
-5. Normalizes geo
-6. Assembles output
-
-**HIPAA log hygiene:** pipeline logs only counts and confidence scores, never raw query text or extracted field values.
-
----
-
-### app.py
-**Entry point:** `main()` via `if __name__ == "__main__"`
-
-Key behaviors:
-- `@st.cache_resource` on `load_pipeline()` — pipeline loads once, shared across all sessions
-- Spinner on first load (30–60s for model download)
-- Session-level rate limiting: max 5 queries per 60-second window, max 30 per session total (`_check_rate_limit()`)
-- PHI disclaimers shown in sidebar and inline above query box
-- State column renders as bulleted list when `is_region=True` and `len(values) > 1`
-- All LLM-derived display values sanitized with `html.escape()` via `_safe()` before rendering
-- Debug expander removed (was showing internal match breakdown — not appropriate for end users)
-- Error handling: `PreprocessorError` → `st.warning`, `ExtractionError` → `st.error`, all others → generic `st.error` with no internal details
+### OBSOLETE-AT-SCALE shims
+- `src/extractor.py` — original combined extractor (medical terms + filters). Still imported by `tests/run_tests.py`.
+- `src/snomed_resolver.py` — original 4-step cascade. Provides `ALIAS_DICTIONARY` used by `hybrid_cascade.py` during the transition (moves into `hybrid_cascade.py` at cleanup).
+- `src/geo_normalizer.py` — 2-line re-export of `src/normalizers/geo.py`.
+- `NLPPipeline.run()` + `_assemble_best_effort_from_session()` — single-turn shim around `run_with_session`.
+- `tests/run_tests.py` — pre-multi-turn regression suite.
 
 ---
 
 ## Data Files
 
-### data/snomed_clinical_trials.csv
-**Columns:** `concept_id`, `preferred_term`, `synonyms` (pipe-separated)
-**Rows:** 116 (including some duplicate preferred_terms intentional for different synonym sets)
-**Coverage:** cancers (15+ types), cardiovascular, metabolic/endocrine, neurological, inflammatory/autoimmune, infectious diseases, clinical procedures, imaging, measurements
+### `data/snomed_clinical_trials.csv`
+Columns `concept_id`, `preferred_term`, `synonyms` (pipe-separated). 116 rows. Coverage: cancers (15+), cardiovascular, metabolic/endocrine, neurological, inflammatory/autoimmune, infectious diseases, procedures, imaging, measurements. **Rule:** every option in `ambiguous_terms.json` MUST resolve through the configured strategy at conf ≥ 0.85 at startup — validated by `AmbiguousTermsRegistry`.
 
-**Rule:** Every target value in the alias dictionary in `snomed_resolver.py` MUST appear as a `preferred_term` in this CSV. To add a new term:
-1. Add row to CSV with unique `concept_id`, `preferred_term` (lowercase), `synonyms` (pipe-separated lowercase)
-2. Optionally add alias entries in `snomed_resolver.py::ALIAS_DICTIONARY`
-3. Rebuild the semantic index (happens automatically at next startup)
+### `data/geo_canonical.json`
+~200 city entries (incl. aliases), 50 US states + DC + Canadian provinces, 59 regions (25 multi-state, 34 metro/single-state). Multi-state regions: east coast (15 states), west coast (3), northeast (9), southeast (9), southwest (5), mid-atlantic (7), mountain west (8), deep south (5), great lakes (8), great plains (7), upper midwest (5), northwest (4), midwest (12), the south (14), new england (6), pacific northwest (3), tri-state/tri state/tristate (NY/NJ/CT).
 
-### data/geo_canonical.json
-**Structure:**
-```json
-{
-  "cities": {
-    "lookup_key_lowercase": {"canonical": "Official Name", "state": "Full State Name", "country": "US"}
-  },
-  "states": {
-    "ABBREVIATION": "Full State Name",
-    "full name lowercase": "Full State Name"
-  },
-  "regions": {
-    "region name lowercase": {
-      "type": "region",
-      "region_states": ["State1", "State2", ...],   ← for multi-state regions
-      "country": "US"
-    },
-    "metro area name": {
-      "type": "region",
-      "primary_city": "City Name",                  ← for single-state metro regions
-      "state": "State Name",
-      "country": "US"
-    }
-  }
-}
-```
-
-**Counts:** ~200 city entries (including all aliases), 50 US states + DC + Canadian provinces, 59 region entries (25 multi-state, 34 metro/single-state)
-
-**Multi-state regions defined:** east coast (15 states), west coast (3), northeast (9), southeast (9), southwest (5), mid-atlantic (7), mountain west (8), deep south (5), great lakes (8), great plains (7), upper midwest (5), northwest (4), midwest (12), the south (14), new england (6), pacific northwest (3), tri-state/tri state/tristate (3: NY/NJ/CT)
-
-**To add a city:** add a lowercase key entry to `cities`. Add all known aliases as separate keys pointing to the same canonical entry.
+### `data/ambiguous_terms.json`
+Schema per entry: `category`, `question_template` (`{trigger}` and `{prior_filters}` placeholders), `options` (3–5 SNOMED-resolvable strings), `manual_override_terms` (optional), `max_options`. Seeded triggers: `cancer`, `tumor`, `oncology`, `diabetes`, `diabetic`, `heart`, `cardiac`, `cardiovascular`, `arthritis`, `autoimmune`, `neurological`/`neuro`/`brain`, `liver`/`hepatic`, `lung disease`/`pulmonary`, `depression`, `infection`. **Known limitation:** the `depression` trigger maps to neuro-adjacent SNOMED options because psychiatric DSM-5 concepts aren't yet in the CSV.
 
 ---
 
 ## Testing
 
-### tests/run_tests.py (regression suite)
-- 20 hardcoded test cases in `tests/test_cases.json`
-- Covers: conditions, abbreviations, city aliases, phase variants, investigator names, site names, negation, typos, informal queries, multi-condition, Canadian cities, region resolution, all-fields-present
-- State comparison: checks if expected state appears anywhere in `state.values` list (handles multi-state)
-- Pass threshold: 15/20 (exit code 0), below 15 (exit code 1)
-- Fuzzy match threshold for filters: 88
+### `tests/run_tests.py` (legacy regression — OBSOLETE-AT-SCALE)
+20 hardcoded cases in `tests/test_cases.json`. State comparison uses membership in `state.values` list. Pass threshold: 15/20.
 
-### tests/batch_eval.py (batch evaluation)
-- Reads from `tests/batch_test_cases.csv` (100 cases, edit freely)
-- CSV columns: `id`, `category`, `description`, `input`, `expected_snomed_codes` (pipe-sep), `expected_snomed_absent` (pipe-sep), `expected_city`, `expected_state`, `expected_phase`, `expected_investigator_name`, `expected_site_name`
-- All `expected_*` columns are optional — blank means "don't check this field"
-- Writes timestamped results CSV to `tests/results/`
-- Prints terminal summary: overall pass rate, per-category breakdown, per-filter accuracy bars, SNOMED recall, avg/min/max processing time
-- Use `--limit N` for quick smoke test
+### `tests/batch_eval.py`
+Reads `tests/batch_test_cases.csv` (100 cases). CSV cols: `id`, `category`, `description`, `input`, `expected_snomed_codes` (pipe-sep), `expected_snomed_absent` (pipe-sep), `expected_city`, `expected_state`, `expected_phase`, `expected_investigator_name`, `expected_site_name`. Optional cols (blank = don't check): `expected_type` (search | clarification), `expected_clarification_field`, `expected_options_contain`. Multi-turn cases use `>>>` separator: `cancer>>>Lung Cancer`. Flags: `--limit N`, `--strategy <name>`, `--legacy` (bypass multi-turn). Writes timestamped CSV to `tests/results/`. Prints overall pass rate, per-category, per-filter accuracy, SNOMED recall, timing.
 
-### qa_testing/test_agent.py (QA test agent)
-- Reads JSON test cases (default `qa_testing/test_cases_202.json`; 1000-case set also available)
-- Case schema: `id`, `input`, `category`, `description`, `expected.snomed_codes`, `expected.filters.{city,state,phase}`, `expected.should_reject`
-- Categories handled: `valid`, `injection`, `harmful`, `edge_case`, `missing_condition`, `invalid_nonsense` — categories in `NO_API_CATEGORIES = {"injection", "harmful", "edge_case"}` are expected to be blocked by the preprocessor and never hit the Groq API
-- **Rate-limit strategy** for Groq free tier (30 req/min, 500 req/day): no-API categories run first and instantly; API-needing cases throttled by token-bucket `RateLimiter` to `--rpm` (default 25); on 429 → exponential backoff up to 60s for `MAX_RETRIES=3` attempts, then case marked `RATE_LIMITED` (skipped, not failed)
-- Filter comparison: `rapidfuzz.token_sort_ratio` ≥ 88; state checked via membership in `state.values` list
-- SNOMED comparison: actual codes deduped before checking expected codes are all present (handles P4 duplicate-code semantics)
-- Writes a `results.md` markdown report per run with summary metrics, failed cases, and rate-limited cases
-- Flags: `--input`, `--limit`, `--category`, `--output`, `--rpm`
+### `tests/test_*.py` (pytest)
+- `test_sufficiency_gate.py` — gate rules, override behavior, self-defeat guard, max-turns escape, partial-word non-match.
+- `test_conversation.py` — multi-turn flows (C1-C13): basic clarification, substitute-on-answer, append-on-free-text, max-turns escape, malicious 2nd-turn payload blocked, round-trip serialization, corruption recovery, plural-trigger false negative (documented).
+- `test_snomed_strategies.py` — top-5 SNOMED codes per strategy with set Jaccard ≥ 0.80 on ≥80% of `batch_test_cases.csv`. Span validity, thread-safety (50 concurrent search calls), health_check.
+- `test_negation.py` — pre/post cues, sentence-boundary stop, comma chain pass-through, pseudo-negation suppression, window edge.
+- `test_llm_provider.py` — retry budget, transient vs permanent error policy, mock provider, factory error message.
+
+### `qa_testing/test_agent.py`
+JSON test cases (default `qa_testing/test_cases_202.json`; 1000-case set available). Schema: `id`, `input`, `category`, `description`, `expected.snomed_codes`, `expected.filters.{city,state,phase}`, `expected.should_reject`. Categories: `valid`, `injection`, `harmful`, `edge_case`, `missing_condition`, `invalid_nonsense`. `NO_API_CATEGORIES = {"injection", "harmful", "edge_case"}` are expected to be blocked by the preprocessor and run instantly without an API call. Rate-limited token-bucket runner (default `--rpm 25`) for the rest, with exponential backoff on 429 up to 60s and `MAX_RETRIES=3`. Cases that exhaust retries are `RATE_LIMITED` (skipped, not failed). Flags: `--input`, `--limit`, `--category`, `--output`, `--rpm`. Writes a `results.md` markdown report.
 
 ---
 
-## Security & HIPAA Considerations
+## Security & HIPAA
 
-### What's implemented
-1. **Two-layer input defense:**
-   - Layer 1 (preprocessor): ~70 regex patterns block prompt injection, SQL injection, script injection, data exfiltration phrases, social engineering, LLM token injection, template/SSTI injection, path traversal, XML injection, HTTP header injection, WMD/weapon synthesis queries, controlled-substance manufacturing, child safety violations, self-harm guides, and cybercrime. Null bytes stripped before any check; SYSTEM prefix blocked at absolute string start.
-   - Layer 2 (pipeline): clinical intent validation — rejects queries with 0 medical terms AND 0 filters after LLM extraction
-2. **Log hygiene (HIPAA):** Query text is never logged. Extracted filter values are never logged. Only counts, lengths, confidence scores, and SNOMED codes logged.
-3. **Error message sanitization:** All user-facing error messages are generic. Internal error details never reach the UI.
-4. **Output sanitization:** All LLM-derived text rendered in UI goes through `html.escape()` before embedding in markdown.
-5. **Session rate limiting:** Max 5 queries/60s, max 30/session (app.py).
-6. **PHI disclaimers:** Shown in sidebar and inline — users instructed not to input patient names, MRNs, DOB, or other PHI.
-7. **API key:** Only via `GROQ_API_KEY` env var or Streamlit secrets. Never hardcoded. Never logged.
+### Per-turn security stack
+1. **Preprocessor.process(raw_user_input)** — ~77 regex patterns + length + null-byte strip.
+2. **Preprocessor.assert_safe(canonical)** — defense-in-depth on the merged canonical query (post-substitute/append).
+3. **Pre-extraction SufficiencyGate** — runs BEFORE any LLM call. Insufficient queries cost zero tokens.
+4. **Clinical-intent gate** — 0 qualifying SNOMED + 0 filters → reject.
+5. **Post-extraction safety check** — filters set but 0 SNOMED → clarification.
+6. **Rate limiting** — 5/60s and 30/session (app.py).
+7. **Max-turns cap** — 3 clarifications per session, hard.
+8. **assert_safe again** — belt-and-suspenders before final assembly.
+9. **Output sanitization** — `html.escape()` on every user-derived/LLM-derived display string.
 
-### What this system does NOT do
-- Store queries or results anywhere (all in-memory, session state only)
-- Authenticate users
-- Connect to any clinical trial database
-- Process actual patient records
+### HIPAA log hygiene (enforced project-wide)
+- Per-turn structured JSON log line emitted by `pipeline._log_turn`.
+- **NEVER logged:** raw query text, canonical query, user_input, preprocessed text, filter values, SNOMED display strings, LLM response, `decision.triggered_by` values, option text, `original_error.message` from `LLMProviderError`, `MetricMatch.matched_text`, `MetricFilterOutput.original_text`.
+- **LOGGED:** counts, lengths, confidence scores, SNOMED codes, decision reason enums, latency, session_id, turn_index, clarification_count, strategy/provider names.
+- Convention: any log statement involving session state uses `session.summary_for_logging()`. **Reviewers should grep for `to_dict()` and `repr(session)` in log lines.**
 
-### Known security gaps (for future improvement)
-- Rate limiting is session-state based — can be bypassed by opening new tabs. Production should use server-side rate limiting.
-- No authentication/authorization layer
-- No audit logging of queries (for compliance, may be needed in production)
+### API key handling
+Only via `GROQ_API_KEY` env var or Streamlit secrets. Never hardcoded, never logged.
 
----
-
-## Known Limitations & Future Improvements
-
-### Current limitations
-1. **SNOMED coverage is curated, not complete** — 116 concepts covers common clinical trial use cases but not rare diseases. To expand: add rows to `snomed_clinical_trials.csv` and optionally update the alias dictionary.
-2. **No user authentication** — anyone with the URL can use it
-3. **Session-only rate limiting** — easily bypassed by new tab
-4. **Groq free tier** — 30 req/min, 500/day. For production use, upgrade to paid tier.
-5. **chromadb not available on Python 3.13 without C++ Build Tools** — falls back to numpy cosine similarity (functionally equivalent for our dataset size)
-6. **LLM non-determinism** — temperature=0.0 minimizes but doesn't eliminate variation across retries
-7. **No caching of query results** — identical queries hit the API every time
-
-### Suggested next improvements
-- Add more SNOMED concepts to the CSV (rare diseases, specific drug names, biomarkers)
-- Add a feedback mechanism so users can flag incorrect extractions
-- Cache common query results (Redis or simple dict with TTL)
-- Add server-side rate limiting (e.g., via nginx or a middleware layer)
-- Expand the LLM system prompt to handle more abbreviation edge cases
-- Add support for date ranges ("trials from 2020–2023")
-- Add support for patient population filters ("pediatric", "elderly", "> 65 years")
-- Connect to ClinicalTrials.gov API to return actual matching trials
+### Known POC gaps
+- Rate limiting is session-state based — bypassable by opening new tabs. Production needs server-side per-IP rate limits.
+- No authentication / authorization.
+- No audit logging for compliance.
+- Background-thread leak under sustained extraction-timeout DoS — `ThreadPoolExecutor.cancel()` doesn't truly cancel running threads.
+- `chromadb` not on Py 3.13 without C++ Build Tools — numpy fallback in use.
+- `pyahocorasick` C extension — Py 3.13 wheels exist for major platforms; without them, fall back to `ngram_lookup` or `hybrid_cascade`.
+- AC automaton synonym deduplication: if two fields share an identical normalized synonym, only one field is reachable through AC (`pyahocorasick`'s `add_word` overwrites silently). Startup validation in `MetricIntentResolver` raises `ValueError` in strict mode (default) or logs a WARN and drops the duplicate in lenient mode.
+- Overlap resolution favors precision over recall: when synonyms for two fields overlap in a query span (e.g., `"total enrollment rate"`), the longer match wins and the shorter field is silently dropped. Document new entries' synonyms to avoid cross-field overlap.
+- Span recovery from normalized to original canonical is approximate. For ASCII-dominant clinical queries the indices align; for queries with multi-byte unicode characters in punctuation, `matched_text` indices may shift.
+- The "No preference" flow assumes the LLM correctly echoes `operator="any"` when prompted. If the LLM omits `metric_fields` entirely, the field stays unresolved and the gate can re-fire (bounded by `max_clarification_turns=3`).
+- `MetricFilterOutput.original_text` and `MetricMatch.matched_text` contain user-derived content. They MUST NEVER be logged. Both are HIPAA-equivalent to `triggered_by` values.
+- The `_months_ago` helper in `sufficiency_gate.py` handles month-end overflow but does not adjust for calendar-date edge cases beyond standard Python `date` arithmetic (e.g., Feb 29 → Feb 28). Acceptable for MM/YYYY precision dates.
+- Date-aware gate options use `date.today()` at gate-fire time. For a long-running session where the session spans a month boundary, the options reflect the fire time, not the start time. Acceptable for a POC.
 
 ---
 
-## Critical Constants (do not change without updating all usages)
+## Critical Constants
 
 | Constant | Value | Location | Impact if changed |
 |---|---|---|---|
-| ChromaDB collection name | `"snomed_clinical_trials_v1"` | snomed_resolver.py | Must match everywhere |
-| Groq model | `"llama-3.1-8b-instant"` | extractor.py | Different behavior, cost |
-| Embedding model | `"all-MiniLM-L6-v2"` | snomed_resolver.py | Vector space changes, re-index |
-| SNOMED confidence threshold | `0.60` | assembler.py (MIN_CONFIDENCE), snomed_resolver.py | Changes what gets included |
-| Semantic similarity threshold | `0.82` | snomed_resolver.py (SEMANTIC_THRESHOLD) | False positive/negative tradeoff |
-| SNOMED fuzzy cutoff | `88` | snomed_resolver.py | False positive/negative tradeoff |
-| Geo fuzzy cutoff | `82` | geo_normalizer.py | Handles typos like "Bostun" → Boston |
-| Geo confidence threshold | `0.60` | assembler.py | Below this, falls back to raw LLM extraction |
-| Batch eval fuzzy threshold | `88` | batch_eval.py, run_tests.py | Test pass/fail sensitivity |
+| Groq model | `"llama-3.1-8b-instant"` | `llm_provider/groq_provider.py` | Cost, latency, quality |
+| Embedding model | `"all-MiniLM-L6-v2"` | `snomed_search/hybrid_cascade.py` | Re-index required |
+| SNOMED MIN_CONFIDENCE | `0.60` | `assembler.py`, `pipeline.py` step 6 | What's included in output |
+| Semantic threshold | `0.82` | `snomed_search/hybrid_cascade.py` | FP/FN tradeoff |
+| SNOMED fuzzy cutoff | `88` | `snomed_search/hybrid_cascade.py` | FP/FN tradeoff |
+| Geo fuzzy cutoff | `82` | `normalizers/geo.py` | Typo tolerance |
+| Geo confidence threshold | `0.60` | `assembler.py` | Below → raw LLM fallback |
+| `OPTION_MIN_CONFIDENCE` | `0.85` | `sufficiency_gate.py` | Registry option validation gate |
+| `AMBIG_JSON_MIN/MAX_OPTIONS` | `3 / 5` | `sufficiency_gate.py` | Registry schema constraint |
+| `PARALLEL_TIMEOUT_SECONDS` | `15.0` | `pipeline.py` | Hard timeout for both futures |
+| `THREAD_POOL_MAX_WORKERS` | `2` | `pipeline.py` | One per pipeline instance |
+| NegEx `WINDOW_SIZE` | `5` (tokens) | `snomed_search/negation.py` | Negation scan range |
+| `max_clarification_turns` | `3` | `conversation.py` | Hard cap per session |
+| Batch eval fuzzy threshold | `88` | `batch_eval.py`, `run_tests.py` | Test sensitivity |
+| `MIN_DERIVED_TOKEN_LEN` | `4` | `sufficiency_gate.py` | Layer 1 token min length |
+| `MIN_DERIVED_TERM_FREQUENCY` | `2` | `sufficiency_gate.py` | Token must appear in ≥N preferred_terms |
+| `LAYER2_LOW_THRESHOLD` | `0.42` | `sufficiency_gate.py` | Embedding mid-band floor |
+| `LAYER2_MIN_NEIGHBORS` | `3` | `sufficiency_gate.py` | Min mid-band neighbors for Signal A |
+| `LAYER2_MIN_GENUINE_AMBIG` | `3` | `sufficiency_gate.py` | Min high-conf matches for Signal B |
+| `LAYER2_SPREAD_THRESHOLD` | `0.08` | `sufficiency_gate.py` | Max conf-spread for Signal B |
+| `MIN_VALID_YEAR` | `2000` | `normalizers/metric.py` | Date year-range floor (DOB-leak mitigation) |
 
 ---
 
-## Component Interfaces (exact signatures)
+## Component Interfaces
 
 ```python
 # preprocessor.py
-Preprocessor.process(raw_input: str) -> PreprocessedInput
+Preprocessor.process(raw: str) -> PreprocessedInput
+Preprocessor.assert_safe(text: str) -> None     # raises PreprocessorError
 PreprocessedInput(text: str, original: str, char_count: int)
 
-# extractor.py
-Extractor.extract(preprocessed: PreprocessedInput) -> ExtractionResult
-MedicalTerm(term: str, negated: bool, confidence: float)
+# llm_provider/base.py
+class LLMProvider(Protocol):
+    name: str
+    model_id: str
+    def complete(self, system_prompt, user_prompt, max_tokens=512,
+                 temperature=0.0, timeout=10.0, json_mode=True) -> str: ...
+    # raises LLMProviderError
+
+# filter_extractor.py
+FilterExtractor(provider: LLMProvider)
+FilterExtractor.extract(canonical: str) -> ExtractedFilters
+ExtractedFilters(investigator_name: FilterField, site_name: FilterField,
+                 city: FilterField, state: StateFilter, phase: FilterField,
+                 raw_response_length: int)
 FilterField(value: Optional[str], confidence: float)
-ExtractionResult(medical_terms: list[MedicalTerm],
-                 investigator_name: FilterField, site_name: FilterField,
-                 city: FilterField, state: FilterField, phase: FilterField,
-                 raw_response: str)
+StateFilter(values: list[str], confidence: float, is_region: bool)
 
-# snomed_resolver.py
-SNOMEDResolver.resolve(term: str, negated: bool) -> Optional[SNOMEDMatch]
-SNOMEDMatch(code: str, display: str, match_type: str, confidence: float,
-            original_text: str, negated: bool)
+# snomed_search/base.py
+class SNOMEDSearchStrategy(Protocol):
+    name: str
+    def __init__(self, dictionary_path: str, **kwargs): ...
+    def search(self, query: str) -> list[SNOMEDMatch]: ...
+    def health_check(self) -> dict: ...
+@dataclass(frozen=True)
+class SNOMEDMatch:
+    code: str; display: str; match_type: str; confidence: float
+    original_text: str; span: tuple[int, int]; negated: bool = False
 
-# geo_normalizer.py
+# snomed_search/negation.py
+NegationAnnotator.annotate(query: str, matches: list[SNOMEDMatch]) -> list[SNOMEDMatch]
+
+# snomed_search/hybrid_cascade.py — extension method (NOT in Protocol)
+HybridCascadeStrategy.get_top_neighbors(
+    query: str, n: int = 15, low_threshold: float = 0.42,
+) -> list[SNOMEDMatch]
+# Returns [] and emits one INFO log if semantic unavailable. Used by EmbeddingAmbiguityGate.
+
+# sufficiency_gate.py
+class SufficiencyGate:
+    def __init__(self, registry: AmbiguousTermsRegistry, snomed_csv_path: str): ...
+    def evaluate(self, canonical: str, session: ConversationSession) -> SufficiencyDecision: ...
+    def post_extraction_check(self, matches: list[SNOMEDMatch],
+                              filters: ExtractedFilters) -> SufficiencyDecision: ...
+class AmbiguousTermsRegistry:
+    def __init__(self, path: str, snomed_strategy: SNOMEDSearchStrategy,
+                 snomed_csv_path: str, strict_validation: bool = True): ...
+    # __init__ auto-derives Layer 1 entries from snomed_csv_path; JSON wins on collision
+    def find_trigger(self, query: str) -> Optional[tuple[str, AmbiguousEntry]]: ...
+class EmbeddingAmbiguityGate:
+    # Layer 2 — pipeline step 5b
+    def __init__(self, strategy: SNOMEDSearchStrategy): ...
+    # duck-types hasattr(strategy, "get_top_neighbors"); silently no-ops without it
+    def evaluate(self, canonical: str,
+                 snomed_matches: list[SNOMEDMatch]) -> Optional[SufficiencyDecision]: ...
+    # snomed_matches MUST be post-NegationAnnotator
+    # Returns None to fall through to clinical-intent gate
+
+# conversation.py
+ConversationSession.new() -> ConversationSession
+ConversationSession.append_turn(t: Turn) -> None
+ConversationSession.compute_canonical_query(user_input: str) -> str
+ConversationSession.set_canonical_query(q: str) -> None
+ConversationSession.update_canonical_query(user_input: str) -> str   # compute + set
+ConversationSession.clarification_turn_count() -> int
+ConversationSession.is_max_turns_reached() -> bool
+ConversationSession.summarize_known_filters() -> str
+ConversationSession.summary_for_logging() -> dict      # PHI-safe; ONLY method safe to log
+ConversationSession.to_dict() -> dict                  # SERIALIZATION only; NEVER log
+ConversationSession.from_dict(d: dict, on_error: str = "raise") -> ConversationSession
+
+# normalizers/geo.py
 GeoNormalizer.normalize(city: Optional[str], state: Optional[str]) -> GeoResult
 GeoResult(city: Optional[str], states: list[str], country: Optional[str],
           confidence: float, is_region: bool,
           original_city: Optional[str], original_state: Optional[str])
 
 # assembler.py (Pydantic V2, all frozen=True)
-ResponseAssembler.assemble(extraction: ExtractionResult,
-                           snomed_matches: list[SNOMEDMatch],
-                           geo: GeoResult,
-                           start_time: float) -> NLPOutput
+ResponseAssembler.assemble(filters, snomed_matches, geo, start_time) -> NLPOutput
+ResponseAssembler.build_clarification(decision, session, start_time) -> ClarificationOutput
+render_question(entry: AmbiguousEntry, trigger: str,
+                session: ConversationSession) -> str
 
-# pipeline.py — the only entry point app.py and tests should use
-NLPPipeline(groq_api_key: str,
-            snomed_csv_path: Optional[str] = None,
-            geo_json_path: Optional[str] = None)
-NLPPipeline.run(raw_query: str) -> NLPOutput
-  # raises PreprocessorError or ExtractionError on failure
+# pipeline.py — the only entry point app.py uses
+NLPPipeline(llm_provider=None, snomed_strategy=None,
+            ambiguous_terms_path=None, snomed_csv_path=None, geo_json_path=None,
+            strict_validation=None, groq_api_key=None)
+NLPPipeline.run_with_session(raw_query: str, session: ConversationSession)
+    -> Union[NLPOutput, ClarificationOutput]
+NLPPipeline.run(raw_query: str) -> NLPOutput        # OBSOLETE-AT-SCALE shim
 ```
 
 ---
 
-## How to Resume or Extend This Work
+## Environment Variables
 
-### If resuming after interruption
-1. Read this entire CONTEXT.md
-2. Check that all files listed in the inventory exist
-3. Run `python tests/batch_eval.py --limit 5` to verify the pipeline is working
-4. Proceed with your task
-
-### If adding a new SNOMED concept
-1. Add a row to `data/snomed_clinical_trials.csv`: `concept_id,preferred_term,synonyms`
-2. If the concept needs a common-language alias, add to `ALIAS_DICTIONARY` in `src/snomed_resolver.py` — the target value must exactly match the `preferred_term` you just added
-3. No other changes needed — the index rebuilds at startup
-
-### If modifying the output schema
-1. Update `GeoResult` in `geo_normalizer.py` if geo fields change
-2. Update Pydantic models in `assembler.py`
-3. Update `assemble()` method in `assembler.py`
-4. Update `render_filters_column()` in `app.py`
-5. Update `run_one()` and `print_summary()` in `tests/batch_eval.py`
-6. Update `run_tests.py` if filter comparison logic changes
-7. Use Pydantic V2 syntax throughout
-
-### If changing the LLM
-1. Update `MODEL` constant in `extractor.py`
-2. Review the system prompt — some models need different formatting instructions
-3. Update `README.md` and `DEPLOYMENT.md`
-4. Re-run batch evaluation to check quality
-
-### If deploying to HuggingFace Spaces
-1. All files except `.env` go into the Space
-2. Add `GROQ_API_KEY` as a Space Secret (Settings → Secrets)
-3. `README.md` already has the required HF YAML front-matter at line 1
-4. chromadb will NOT be available on HF free tier (no C++ Build Tools) — numpy fallback kicks in automatically
-5. First cold start takes 2–5 minutes for package install + model download
+| Variable | Default | Purpose |
+|---|---|---|
+| `GROQ_API_KEY` | — (required) | Groq API authentication |
+| `LLM_PROVIDER` | `groq` | Selects provider via `llm_provider/registry.py` |
+| `SNOMED_SEARCH_STRATEGY` | `hybrid_cascade` | Selects strategy via `snomed_search/registry.py` |
+| `AMBIG_STRICT_VALIDATION` | `true` | `true` = `sys.exit(1)` on invalid registry options; `false` = log warn and drop (rolling-deploy graceful degrade) |
 
 ---
 
-## Dependency Tree (key relationships)
+## Dependency Tree
 
 ```
 app.py
-  └── src/pipeline.py (NLPPipeline)
-        ├── src/preprocessor.py (Preprocessor)
-        ├── src/extractor.py (Extractor) ← needs GROQ_API_KEY
-        ├── src/snomed_resolver.py (SNOMEDResolver)
+  └── src/pipeline.py (NLPPipeline.run_with_session)
+        ├── src/preprocessor.py
+        ├── src/conversation.py (ConversationSession, Turn)
+        ├── src/sufficiency_gate.py (SufficiencyGate, AmbiguousTermsRegistry,
+        │     DEFAULT_CONDITION_PROMPT)
+        │     ├── data/ambiguous_terms.json
+        │     ├── data/snomed_clinical_trials.csv (for option validation
+        │     │                                     + default prompt)
+        │     └── src/snomed_search/* (for option validation)
+        ├── src/llm_provider/registry.py → groq_provider.py
+        │     ← needs GROQ_API_KEY
+        ├── src/filter_extractor.py (FilterExtractor)
+        │     └── src/llm_provider/base.LLMProvider
+        ├── src/snomed_search/registry.py → {hybrid_cascade | aho_corasick | ngram_lookup}
         │     ├── data/snomed_clinical_trials.csv
-        │     ├── sentence-transformers (all-MiniLM-L6-v2)
-        │     └── chromadb [optional] or numpy [fallback]
-        ├── src/geo_normalizer.py (GeoNormalizer)
+        │     ├── sentence-transformers (hybrid_cascade only)
+        │     ├── pyahocorasick (aho_corasick only)
+        │     └── chromadb [optional] or numpy [fallback] (hybrid_cascade only)
+        ├── src/snomed_search/negation.py (NegationAnnotator)
+        ├── src/normalizers/geo.py (GeoNormalizer)
         │     └── data/geo_canonical.json
-        └── src/assembler.py (ResponseAssembler)
+        └── src/assembler.py (ResponseAssembler, render_question)
 
-tests/run_tests.py → src/pipeline.py (same path as app.py)
-tests/batch_eval.py → src/pipeline.py (same path as app.py)
+tests/run_tests.py     → src/pipeline.py.run() shim  (OBSOLETE-AT-SCALE)
+tests/batch_eval.py    → src/pipeline.py (supports --strategy, --legacy)
+qa_testing/test_agent.py → src/pipeline.py
 ```
+
+---
+
+## How to Resume or Extend
+
+### If resuming after interruption
+1. Read this entire context.md.
+2. Verify files exist per the inventory; verify `data/ambiguous_terms.json` is present.
+3. Run `python tests/batch_eval.py --limit 5` to verify the pipeline.
+4. Run `pytest tests/test_sufficiency_gate.py tests/test_conversation.py` for quick health.
+
+### Adding a new SNOMED concept
+1. Add a row to `data/snomed_clinical_trials.csv`: `concept_id,preferred_term,synonyms`.
+2. If common-language alias is needed, add to `ALIAS_DICTIONARY` in `src/snomed_resolver.py` (shim) — target must equal a CSV `preferred_term`.
+3. No other code changes — indexes rebuild at startup.
+
+### Adding a new ambiguous trigger
+1. Add an entry to `data/ambiguous_terms.json` (3–5 options).
+2. Every option must resolve at conf ≥ 0.85 via the default strategy — if not, either add CSV terms first OR run with `AMBIG_STRICT_VALIDATION=false` and accept that the trigger will be skipped.
+3. Override terms auto-derive from the CSV; supply `manual_override_terms` for archaic synonyms.
+
+### Adding a new SNOMED strategy
+1. Implement `SNOMEDSearchStrategy` in `src/snomed_search/<my_strategy>.py`. Populate `SNOMEDMatch.span` for every match. Document candidate-extraction in `search()` docstring.
+2. Register in `src/snomed_search/registry.py`.
+3. Add to `tests/test_snomed_strategies.py` parity suite.
+4. `python tests/batch_eval.py --strategy my_strategy` to evaluate.
+
+### Adding a new LLM provider
+1. Implement `LLMProvider` in `src/llm_provider/<name>_provider.py`. Honor retry contract (transient retried 3× with `[1s,2s,4s]`; permanent raises immediately).
+2. Register in `src/llm_provider/registry.py`.
+3. Re-tune `FilterExtractor.SYSTEM_PROMPT` if needed; re-run batch eval.
+4. Set `LLM_PROVIDER` env var.
+
+### Modifying the output schema
+1. Update `GeoResult` in `normalizers/geo.py` if geo fields change.
+2. Update Pydantic models in `assembler.py` (`NLPOutput`, `ClarificationOutput`, `FiltersOutput`, etc.).
+3. Update `assemble()` / `build_clarification()`.
+4. Update `app.py` rendering.
+5. Update `batch_eval.py` comparisons.
+6. Pydantic V2 syntax throughout (`model_config = ConfigDict(...)`, `model_dump()`).
+
+### Deploying to HuggingFace Spaces
+1. All files except `.env` go into the Space.
+2. `GROQ_API_KEY` as Space Secret.
+3. `README.md` already has HF YAML front-matter.
+4. chromadb won't install on HF free (no C++ Build Tools) — numpy fallback kicks in.
+5. `pyahocorasick` wheel install will determine `aho_corasick` strategy availability.
+6. First cold start: 2–5 min for install + model download.
 
 ---
 
 ## Post-Build Changes Log
 
-### Security audit (after initial build)
-- `preprocessor.py`: Added 22 new patterns covering data exfiltration, social engineering
-- `pipeline.py`: Added clinical intent validation after LLM extraction (primary defense against non-clinical queries)
-- `pipeline.py`: Removed extracted field values from all log lines (HIPAA)
-- `extractor.py`: Removed partial LLM response content from error logs
-- `app.py`: Added PHI disclaimer in sidebar and inline; added session rate limiting; sanitized all LLM-derived display values with `html.escape()`; removed unused `last_raw_response` session state key; removed debug expander
+### Clarification UI: buttons → text (2026-05-11)
 
-### Multi-state geo support
-- `geo_canonical.json`: Added 25 multi-state region entries with `region_states` arrays; updated existing regions (new england, midwest, the south, pacific northwest, tri-state) from single-state to multi-state
-- `geo_normalizer.py`: Changed `GeoResult.state: Optional[str]` → `states: list[str]`; updated `normalize()` to return full state lists for regions
-- `assembler.py`: Added `StateFilterOutput(values: list[str], confidence, is_region)` replacing `FilterFieldOutput` for the state field
-- `app.py`: State column now renders as bulleted list for regional queries
-- `tests/run_tests.py`: Updated state comparison to check membership in list
+Removed per-option `st.button` widgets from the clarification render in `app.py`. The clarification turn now shows the question + a passive bulleted hint list of options; the user replies in the existing `st.chat_input` (free text — they can type one of the listed options verbatim, a refinement, or anything else, all of which route through the same `Preprocessor` → `SufficiencyGate` → canonical-query merge path).
 
-### Python 3.13 compatibility
-- `requirements.txt`: `torch 2.2.2 → 2.6.0`, `numpy 1.26.4 → 2.1.0`, `chromadb 0.5.3 → removed`, `sentence-transformers 2.6.1 → 3.2.1`
-- `snomed_resolver.py`: chromadb now a soft dependency with numpy cosine similarity fallback; two-stage `_build_chroma_index()` tries chromadb first, then numpy; `_semantic_match()` handles both backends
+**Scope:** `app.py` only. No pipeline / schema / test changes. Existing `tests/test_conversation.py`, `tests/batch_eval.py`, `qa_testing/test_agent.py` continue to pass because they always fed option text directly as the next `user_input` string — they never simulated Streamlit button clicks.
 
-### Batch evaluation framework
-- `tests/batch_eval.py`: Full batch runner with per-case results, SNOMED precision/recall, per-filter accuracy, per-category breakdown, timing stats; writes timestamped CSV to `tests/results/`
-- `tests/batch_test_cases.csv`: 100 test cases covering all categories
+**Latent bug fixed inline:** the previous render code called `_safe()` on `clarif.question` and `clarif.options` AND passed `unsafe_allow_html=True` to `st.markdown`. Those strings are already `html.escape`'d in `ResponseAssembler.build_clarification()` (`src/assembler.py:122-124`), so `_safe()` at the render site was double-escaping (visible for strings containing `& < >`, e.g. `Hodgkin's & Non-Hodgkin's` → `Hodgkin&amp;#39;s &amp;amp; Non-Hodgkin&amp;#39;s`). Render site now trusts the pre-escaped strings and renders with plain `st.markdown(...)`. Dropping `unsafe_allow_html=True` is also a defense-in-depth win — already-escaped entities render correctly without the flag, and the flag's only effect was to allow raw HTML tags through unsanitized.
 
-### Security hardening & pipeline correctness (2026-05-05)
-Driven by 1004-case batch evaluation identifying 86 non-SNOMED-coverage failures. Changes reviewed and approved by Architect → QA → Security before implementation.
+**Escaping convention going forward:** `ResponseAssembler` owns escaping for `ClarificationOutput` fields. `app.py` does NOT re-escape those fields. For `NLPOutput` rendering (`_render_nlp_output()`), values are NOT pre-escaped, so `_safe()` is still applied at the render site there.
 
-**P1 — Harmful content blocking (`src/preprocessor.py`)**
-- Added 22 new patterns to `_INJECTION_PATTERNS` covering: WMD/weapon synthesis (`nerve agent`, `sarin`, `bioweapon`, `dirty bomb`, `chemical weapon`, explosive synthesis, weapon synthesis), controlled-substance manufacturing (`methamphetamine`, `manufactur*`/`synthesiz*` + drug nouns), child safety (`child exploitation`, `human trafficking`, `child abuse material`), self-harm (`suicide method`, `self-harm guide`, `how to kill myself/yourself`), cybercrime (`ransomware`, `dark web drug`, `malware creat*`)
-- Attack vector blocked: queries pairing harmful content with a valid clinical term via AND (e.g. "synthesize nerve agent AND heart failure phase 3") — the preprocessor now catches these before the LLM call
+**Removed code:** the per-option `st.columns` + `st.button` loop in `_render_turn_result()` (lines 238–249) and the `pending_input` session-state consumer in `main()` (lines 345–349). Both `st.session_state["pending_input"]` and the per-option `st.rerun()` are no longer used anywhere in the app.
 
-**P1 — Injection pattern hardening (`src/preprocessor.py`)**
-- Added 15 new injection patterns: LLM special tokens (`[\s*/?INST\s*]` with whitespace tolerance, `<<SYS>>`, `<</SYS>>`), template/SSTI (`${...}`), code eval (`eval(`), HTTP header injection (`%0a`/`%0d` URL-encoded newlines), XML closing tags (`</tag\s*>`), self-closing tags, path traversal (`\.\.[\\/]` — catches both Unix `../` and Windows `..\`), SQL tautologies (`AND 1=1`, `OR 1=1`, `SLEEP(N)`, `UNION SELECT`)
-- Added SYSTEM prefix pattern (`\ASYSTEM\s*[:\n]`) compiled separately with `re.IGNORECASE` using `\A` absolute-start anchor (not `^` with MULTILINE)
-- Null bytes (`\x00`) stripped as the VERY FIRST step in `process()`, before `_validate_length` and before injection check; also stripped in `_sanitize()` as belt-and-suspenders
-- Residual accepted risk (POC): leet speak substitution, unicode homoglyphs, heavily-spaced characters
+**Spec:** `rework-buttons-to-text.md` (Decision C revised post Security review; see the `<!-- override -->` block in section 3 for the double-escape + flag-removal rationale).
 
-**P2 — Null string state leak fix (`src/assembler.py`)**
-- Added module-level `_INVALID_STATE_VALUES = frozenset({"null", "none", "n/a", "na", "unknown", ""})` before `ResponseAssembler`
-- In `assemble()` geo fallback branch: replaced `state_values = [extraction.state.value] if extraction.state.value else []` with a guard that checks `raw_state.strip().lower() not in _INVALID_STATE_VALUES`, preventing the literal string `"null"` (returned by the LLM instead of JSON null) from appearing as `state: ['null']` in output
+**Known pre-existing dead code (NOT removed in this work item):** `_run_pipeline_turn` (lines ~171–214) and `_sync_turn_outputs` (lines ~299–305) in `app.py` have zero callers. They were dead before this change. Candidate for a separate cleanup PR.
 
-**P3 — Kansas City state disambiguation + site-name state extraction (`src/extractor.py`)**
-- Root cause confirmed: `geo_canonical.json` correctly mapped "kansas city" → Missouri; the bug was the LLM extracting "Kansas" from the city name, then the geo_normalizer's "explicit state always wins" rule overriding the correct Missouri
-- Fixed in `SYSTEM_PROMPT` rule 6: added IMPORTANT block instructing the LLM to extract state ONLY from explicit state mentions, not from city names ("Kansas City" ≠ Kansas, "Oklahoma City" ≠ Oklahoma, "New York" city ≠ New York state) and not from institution names ("Massachusetts General Hospital" does not imply state=Massachusetts when a different city is specified)
+### Ambiguity coverage v2 — auto-derived triggers + embedding gate (2026-05-11)
 
-**P4 — Duplicate SNOMED codes (`src/assembler.py`)**
-- `snomed_matches` now sorted by confidence descending BEFORE the main loop in `assemble()`, ensuring the highest-confidence match wins deduplication
-- After the loop and before geo integration: deduplicate `included` by SNOMED code using a `seen_codes` set, keeping first (highest-confidence) occurrence per code
-- `metadata.total_snomed_matches` correctly reflects unique codes after deduplication
+Closes the coverage gap where bare anatomy terms ("kidney", "lung", "bone") were rejected by the clinical-intent gate with "No clinical content found." Two layers added.
 
-### Verb-noun attack pattern coverage (2026-05-05)
-Gap identified: all prior harmful content patterns were noun compounds (e.g. `weapon synthesis`, `chemical weapon`). Queries pairing a harmful *action verb* with a weapon/drug/person noun bypassed all patterns (e.g. "diabetes studies and how to make weapons").
+**Layer 1 — Auto-derived triggers from SNOMED CSV** (in `src/sufficiency_gate.py`):
+- At `AmbiguousTermsRegistry.__init__`, scan `data/snomed_clinical_trials.csv` `preferred_term` column. Extract single-token anatomy/system words that pass length (≥4), stopword (27 entries incl. "human"), and frequency (≥2 distinct preferred_terms) gates. Synthesize an `AmbiguousEntry` per qualifying token with the matching CSV rows as options.
+- New helpers: `_extract_anatomy_tokens`, `_select_derived_options`, `_build_derived_entries`, `_merge_entries`. JSON entries always win on key collision.
+- Options use raw lowercase CSV values — no `.title()` (preserves acronyms like "hiv").
+- `override_terms` for derived entries auto-include preferred_terms + synonyms containing the token (suppresses compound queries like "lung cancer" from firing the bare "lung" trigger).
+- Derive failures gracefully fall back to JSON-only regardless of `AMBIG_STRICT_VALIDATION`.
 
-**7 new patterns added to `_INJECTION_PATTERNS` in `src/preprocessor.py`** (total now ~77):
-- `(make|build|create|construct|fashion) + (weapon|bomb|firearm|rifle|pistol|explosive|ied)` — closes verb-noun weapon gap
-- `(cook|make|grow|produce|bake) + (meth|methamphetamine|heroin|cocaine|crack|fentanyl|lsd|ecstasy)` — closes drug production verb gap (`manufactur*`/`synthesiz*` were already covered)
-- `how to commit suicide` — extends self-harm coverage beyond `suicide method` / `how to kill myself`
-- `ways to (end|take) (my|your) life` — additional self-harm instructional phrase
-- `how to (hurt|harm|injure) (myself|yourself)` — self-harm verb variant
-- `poison + (person|someone|people|victim|target|individual)` — closes poison-as-attack-verb gap (existing pattern only covered `poison water/food supply`)
-- `(write|create|build|develop|code) + (malware|ransomware|botnet|exploit)` — closes cybercrime verb gap; `virus` deliberately excluded to avoid blocking HIV/influenza/viral vector clinical terms
+**Layer 2 — `EmbeddingAmbiguityGate`** (new class in `src/sufficiency_gate.py`, pipeline step 5b):
+- Inserted between `NegationAnnotator` (step 5) and clinical-intent gate (step 6) in `_run_extraction_path`.
+- Signal A: 0 high-conf SNOMED + ≥3 mid-band embedding neighbors in `[0.42, 0.60)` → clarification.
+- Signal B: ≥3 high-conf matches with confidence spread < `0.08` → clarification (genuine ambiguity).
+- Reuses `HybridCascadeStrategy._embedder` via new `get_top_neighbors(query, n=15, low_threshold=0.42) -> list[SNOMEDMatch]`. Strategies without the method (aho_corasick, ngram_lookup) are duck-type detected; gate silently no-ops.
+- Always sets `triggered_by=None` → canonical merge uses append mode (preserves user phrasing; no lossy single-token substitution).
+- Filters negated matches before computing signals (M4).
+- New log path enum `LOG_PATH_EMBEDDING_AMBIGUITY = "embedding_ambiguity_clarification"`.
 
-### QA test agent + extended case sets (2026-05-06)
-New `qa_testing/` directory introduces a rate-limit-aware test runner separate from the existing `tests/` suite.
+**Pre-existing bug fixed (B6):** `src/conversation.py:174` used `pattern.sub(user_input, ...)` where the replacement arg interprets `re` backreferences (`\1`, `\g<name>`). User input containing `\1` raised `re.error`. Patched to `pattern.sub(lambda _m: user_input, ..., count=1)` — replacement is now literal.
 
-- `qa_testing/test_agent.py` — runs JSON test cases against `NLPPipeline`, throttles API calls to stay under Groq's 30 req/min free-tier limit, retries on 429 with exponential backoff up to 60s, marks cases `RATE_LIMITED` (skipped) rather than failing them after `MAX_RETRIES=3`. Runs no-API categories (`injection`, `harmful`, `edge_case`) first and instantly. Writes a markdown `results.md` per run.
-- `qa_testing/test_cases_202.json` — 202 curated cases, default input
-- `qa_testing/test_cases_1000.json` — 1000 cases for extended evaluation
-- Case schema is JSON (not CSV like `batch_test_cases.csv`): each case has `expected.snomed_codes` (list), `expected.filters.{city,state,phase}`, and `expected.should_reject` (bool) for cases the preprocessor must block.
+**Design**: `rework-ambiguity-coverage.md` (revision 2, post adversarial QA + Security review). 6 blockers + 8 majors addressed before implementation. Inline `<!-- rev2 -->` markers identify post-review changes.
 
-### Rework design docs (2026-05-06)
-Two architectural specs added at the repo root for a planned v2 of the pipeline. Neither document changes the current implementation — they are forward-looking design only.
+**Tests added:** `tests/test_ambiguity_coverage.py` (17 cases, all pass). Existing suite (`test_sufficiency_gate.py`, `test_conversation.py`, `test_negation.py`, `test_llm_provider.py`) continues to pass: 85/85 total.
 
-- `rework-nlp-proposal.md` — architectural proposal (revision 2, post adversarial QA + Security review). Key proposed changes: pre-extraction `SufficiencyGate` over the raw query (deterministic registry lookup) so insufficient queries cost zero LLM tokens; LLM extracts **filters only** (no SNOMED); SNOMED becomes a pluggable strategy behind a `SNOMEDSearchStrategy` Protocol (Aho-Corasick / n-gram / hybrid candidates); `LLMProvider` abstraction to remove Groq lock-in; NegEx-style algorithmic negation; parallel filter-extraction + SNOMED via `ThreadPoolExecutor`; multi-turn clarification capped at 3 turns; output becomes a discriminated union `NLPOutput | ClarificationOutput`. `state.values: list[str]` schema is preserved.
-- `rework-nlp-impl-spec.md` — pseudocode-level implementation spec for the proposal (1949 lines). Defines `AmbiguousTermsRegistry`, `AmbiguousEntry`, `SufficiencyGate`, and the `data/ambiguous_terms.json` artifact. Pydantic V2, `frozen=True`, with strict-vs-graceful validation modes for rolling deploys.
+**New constants:** `MIN_DERIVED_TOKEN_LEN=4`, `MIN_DERIVED_TERM_FREQUENCY=2`, `LAYER2_LOW_THRESHOLD=0.42`, `LAYER2_MIN_NEIGHBORS=3`, `LAYER2_MIN_GENUINE_AMBIG=3`, `LAYER2_SPREAD_THRESHOLD=0.08`. `MIN_CONFIDENCE=0.60` is imported from `assembler.py` — single source of truth.
 
-**When implementing the rework**, treat `rework-nlp-proposal.md` as authoritative; `rework-nlp-impl-spec.md` deepens it with file paths, imports, constants, and class signatures. Look for `# OBSOLETE-AT-SCALE: <reason>` markers as the cleanup convention.
+**Known limitation:** Single-CSV-row anatomy tokens (e.g. "kidney" appears in only "malignant neoplasm of kidney") fall to Layer 2 — they don't generate a Layer 1 entry. Layer 2's embedding gate handles them at the cost of one nearest-neighbor lookup per low-confidence query.
+
+### Metric filter recognition v1 — AC automaton + fuzzy fallback (2026-05-12)
+
+Adds a deterministic pre-extraction pass for clinical-trial operational metrics. A single Aho-Corasick automaton scans the canonical query for synonyms across 12 fields in one pass; rapidfuzz token_sort_ratio covers residual spans for spelling variants (budget capped at 5000 comparisons per query). Recognized fields without values trigger `MetricAmbiguityGate` clarifications using APPEND-mode canonical-merge (mirrors `EmbeddingAmbiguityGate`; no user-derived `triggered_by` content).
+
+**Files added (v1):** `data/metric_filters.json` (12 fields), `src/normalizers/metric.py` (resolver + models + normalizer), `tests/test_metric_filters.py`.
+
+**Files modified (v1):** `src/normalizers/base.py` (MetricFilterNormalizer Protocol), `src/filter_extractor.py` (ExtractedFilters.metric_fields, dynamic metric_section, ValidationError-safe logging), `src/sufficiency_gate.py` (MetricAmbiguityGate, _count_set_filters extension, SufficiencyDecision.reason validator), `src/assembler.py` (NLPOutput.metric_filters), `src/pipeline.py` (Step 3b resolver, Step 7b gate, LOG_PATH_METRIC_AMBIGUITY, _log_turn extension), `app.py` (operator display + render block), `tests/batch_test_cases.csv` (6 new rows incl. multi-turn `>>>`).
+
+### Metric filter recognition v2 — Advarra-specific field replace (2026-05-13)
+
+Full replacement of all 12 metric fields with Advarra-confirmed metrics mapped to the search-results widget. None of the original 12 reused. Single commit replaces JSON, test file, batch CSV rows, and adds date-aware gate logic.
+
+**New 12 fields:**
+1. `total_studies_with_advarra` — total Advarra study count (numeric)
+2. `studies_matching_search` — studies matching search (numeric)
+3. `active_trials` — active/ongoing trials (numeric)
+4. `most_recent_approval_date` — approval date (date, MM/YYYY)
+5. `avg_days_respond_to_queries` — query response time (numeric)
+6. `avg_days_submission_to_approval` — submission-to-approval time (numeric)
+7. `total_protocol_deviations_all_studies` — PDs across all studies (numeric)
+8. `total_protocol_deviations_matching_studies` — PDs in matching studies (numeric)
+9. `avg_enrollment_matching_studies` — avg enrollment per matching study (numeric)
+10. `avg_enrollment_matching_ta` — avg enrollment by therapeutic area (numeric)
+11. `avg_screening_rate` — screening velocity (numeric)
+12. `avg_days_to_fpe` — days to first patient enrolled (numeric)
+
+**Schema changes:**
+- `MetricFilterOutput.value_end` added for `between` operator support (user decision Q3); cross-field `_validate_between_pair` model validator enforces operator/value/value_end invariants for both numeric and date data types.
+- `_coerce_value_field` helper extracted; `_validate_value_end` field validator added.
+- `normalize_date` year-range check (`MIN_VALID_YEAR=2000`, max=today.year+1) mitigates DOB-leak risk (Sec-SB1).
+- `data_type="date"` branch in `_validate_value` with `isinstance(v, str)` guard and `operator="any"` short-circuit.
+
+**Gate changes:**
+- `MetricAmbiguityGate.evaluate` (§3.5): date-aware option substitution computes absolute MM/YYYY options at gate-fire time using `_months_ago` helper (e.g. `"Since 11/2025"`). User picks an absolute date; canonical merge produces a directly parseable MM/YYYY string.
+
+**Display changes:**
+- `app.py` metric-render block: `between` operator renders `"between {value} and {value_end}{unit}"`.
+
+**Tests:** 9 groups, 97 cases (was 8 groups, 43 cases). Date E2E tests (gte, between, year-range rejection), `between`-pair Pydantic validator tests, date-option MM/YYYY pattern assertion.
+
+**Spec:** `rework-metric-filters-v2.md` (537 lines, rev2 post QA + Security adversarial review). All reviewer findings dispositioned: C1-C7 addressed, QA-N1 verified, Sec-SM2/SM3 in implementation.
+
+**New env vars:** `METRIC_STRICT_VALIDATION` (default `true`).
+**New constants:** `MAX_FUZZY_COMPARISONS_PER_QUERY=5000`, `LOG_PATH_METRIC_AMBIGUITY="metric_ambiguity_clarification"`, `VALID_UNITS` (whitelist of {patients, months, days, sites, percent, queries, None}), `MIN_VALID_YEAR=2000`.
+
+### v2 Rework — Architecture and pipeline split (2026-05-08)
+
+Full implementation of `rework-nlp-proposal.md` (revision 2) and `rework-nlp-impl-spec.md`. Pipeline now supports multi-turn clarification and returns a discriminated union output type.
+
+**Core changes:**
+- Pre-extraction `SufficiencyGate` + registry-driven `AmbiguousTermsRegistry` — zero-token-cost for ambiguous queries.
+- LLM extraction is now filters-only (`FilterExtractor`); SNOMED is fully algorithmic.
+- Pluggable `SNOMEDSearchStrategy` Protocol with 3 implementations (`hybrid_cascade` default).
+- `LLMProvider` abstraction (`src/llm_provider/`) — removes Groq lock-in.
+- NegEx `NegationAnnotator` replaces LLM-based negation flag.
+- `ConversationSession` multi-turn state with `Turn` records and PHI-safe `summary_for_logging()`.
+- Parallel filter-extraction + SNOMED via `ThreadPoolExecutor` with shared 15s timeout.
+- Discriminated union output: `NLPOutput(type="search") | ClarificationOutput(type="clarification")`.
+- `app.py` rewritten as a chat UI with `st.chat_input` / `st.chat_message` and clickable clarification options.
+
+**New env vars:** `LLM_PROVIDER` (default `groq`), `SNOMED_SEARCH_STRATEGY` (default `hybrid_cascade`), `AMBIG_STRICT_VALIDATION` (default `true`).
+
+**OBSOLETE-AT-SCALE shims kept for compatibility:** `src/extractor.py`, `src/snomed_resolver.py`, `src/geo_normalizer.py`, `NLPPipeline.run()`, `tests/run_tests.py`.
+
+**Known limitation:** the `depression` trigger maps to neuro-adjacent SNOMED options because psychiatric (DSM-5) concepts are not yet in `data/snomed_clinical_trials.csv`.
+
+---
+
+## Legacy (pre-2026-05-08) — historical reference only
+
+The pre-rework pipeline (single-turn) used `src/extractor.py` for combined SNOMED + filter LLM extraction, `src/snomed_resolver.py` for a 4-step cascade resolver, and `src/geo_normalizer.py` directly. The OBSOLETE-AT-SCALE shims preserve those import paths so `tests/run_tests.py` and any external callers continue to work. Key v1 milestones:
+
+- **Initial build** — single-turn pipeline; Pydantic V2; 116 SNOMED concepts; geo_canonical.json with cities, states, regions.
+- **Security audit** — 22 patterns added (data exfil, social engineering); pipeline clinical-intent validation; HIPAA log hygiene.
+- **Multi-state geo** — `GeoResult.state` → `states: list[str]`; `StateFilterOutput(values, confidence, is_region)`.
+- **Python 3.13 compat** — `torch 2.6.0`, `numpy 2.1.0`; chromadb removed from requirements; numpy cosine fallback added.
+- **Batch evaluation** — `tests/batch_eval.py` + 100-case CSV.
+- **Security hardening 2026-05-05** — 22 harmful-content patterns, 15 injection patterns, null-byte strip first, `\ASYSTEM` anchor, Kansas-City fix in extractor prompt, duplicate-SNOMED-code dedup by highest confidence, `_INVALID_STATE_VALUES` guard.
+- **Verb-noun attack coverage 2026-05-05** — 7 patterns for make/build + weapon, cook/grow + drug, write/develop + malware, etc.
+- **QA test agent 2026-05-06** — `qa_testing/test_agent.py` + 202/1000-case JSON sets with token-bucket rate limiter for Groq free tier.
+- **Rework design docs 2026-05-06** — `rework-nlp-proposal.md` + `rework-nlp-impl-spec.md` drafted.

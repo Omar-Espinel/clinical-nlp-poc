@@ -1,13 +1,19 @@
-"""Assembles final NLPOutput from all pipeline component results."""
+"""Assembles final NLPOutput or ClarificationOutput from all pipeline component results."""
 
+import html
 import time
-from typing import Optional
+from typing import TYPE_CHECKING, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
-from src.extractor import ExtractionResult, FilterField
-from src.snomed_resolver import SNOMEDMatch
-from src.geo_normalizer import GeoResult
+from src.filter_extractor import ExtractedFilters
+from src.snomed_search.base import SNOMEDMatch
+from src.normalizers.geo import GeoResult
+from src.normalizers.metric import MetricFilterOutput
+from src.sufficiency_gate import AmbiguousEntry, SufficiencyDecision
+
+if TYPE_CHECKING:
+    from src.conversation import ConversationSession
 
 
 class SNOMEDTermOutput(BaseModel):
@@ -56,27 +62,86 @@ class MetadataOutput(BaseModel):
 
 
 class NLPOutput(BaseModel):
-    """Complete NLP pipeline output."""
+    """Complete NLP pipeline output — search result path."""
     model_config = ConfigDict(frozen=True)
+    type: Literal["search"] = "search"
     snomed_terms: list[SNOMEDTermOutput]
     filters: FiltersOutput
+    metric_filters: list[MetricFilterOutput] = Field(default_factory=list)
+    metadata: MetadataOutput
+
+
+class ClarificationOutput(BaseModel):
+    """Output for a clarification turn — pipeline needs more info from the user."""
+    model_config = ConfigDict(frozen=True)
+    type: Literal["clarification"] = "clarification"
+    question: str            # html.escape'd
+    options: list[str]       # each html.escape'd
+    canonical_query: str     # html.escape'd; for transparency
+    turn_number: int         # 1-indexed clarification turn
+    max_turns: int = 3
     metadata: MetadataOutput
 
 
 _INVALID_STATE_VALUES = frozenset({"null", "none", "n/a", "na", "unknown", ""})
 
 
+def render_question(
+    entry: AmbiguousEntry,
+    trigger: str,
+    session: "ConversationSession",
+) -> str:
+    """Module-level helper: render the clarification question from a registry entry.
+
+    Rendering is a presentation concern; it lives here rather than in sufficiency_gate.py.
+    HIPAA: do NOT log the return value (it contains user-derived content).
+    """
+    prior_filters_str = session.summarize_known_filters()
+    prefix = f"You're searching in {prior_filters_str} — " if prior_filters_str else ""
+    template = entry.question_template
+    return template.format(trigger=trigger, prior_filters=prefix).strip()
+
+
 class ResponseAssembler:
-    """Assembles the final NLPOutput from all pipeline component results."""
+    """Assembles the final NLPOutput or ClarificationOutput from pipeline component results."""
 
     MIN_CONFIDENCE = 0.60
 
+    def build_clarification(
+        self,
+        decision: SufficiencyDecision,
+        session: "ConversationSession",
+        start_time: float,
+    ) -> ClarificationOutput:
+        """Build a ClarificationOutput from a non-sufficient SufficiencyDecision.
+
+        All user-rendered strings are html.escape'd before being placed in the model.
+        Called for both ambiguous_trigger and filters_without_condition paths.
+        """
+        entry = decision.matched_entry  # guaranteed non-None when sufficient=False
+        trigger = decision.triggered_by or "your query"
+        question_raw = render_question(entry, trigger, session)
+        return ClarificationOutput(
+            question=html.escape(question_raw),
+            options=[html.escape(o) for o in entry.options],
+            canonical_query=html.escape(session.canonical_query),
+            turn_number=session.clarification_turn_count() + 1,
+            max_turns=session.max_clarification_turns,
+            metadata=MetadataOutput(
+                processing_time_ms=int((time.perf_counter() - start_time) * 1000),
+                total_snomed_matches=0,
+                snomed_match_types={},
+                negated_terms_excluded=0,
+            ),
+        )
+
     def assemble(
         self,
-        extraction: ExtractionResult,
+        filters: ExtractedFilters,
         snomed_matches: list[SNOMEDMatch],
         geo: GeoResult,
         start_time: float,
+        metric_filters: Optional[list[MetricFilterOutput]] = None,
     ) -> NLPOutput:
         """Build NLPOutput from extraction, SNOMED matches, geo result, and timing.
 
@@ -125,24 +190,28 @@ class ResponseAssembler:
             state_conf = geo.confidence
             state_is_region = geo.is_region
         else:
-            city_value = extraction.city.value
-            city_conf = extraction.city.confidence
-            raw_state = extraction.state.value
-            if raw_state and raw_state.strip().lower() not in _INVALID_STATE_VALUES:
-                state_values = [raw_state]
+            city_value = filters.city.value
+            city_conf = filters.city.confidence
+            raw_state_values = filters.state.values
+            if raw_state_values:
+                # Filter out invalid sentinel strings
+                state_values = [
+                    s for s in raw_state_values
+                    if s and s.strip().lower() not in _INVALID_STATE_VALUES
+                ]
             else:
                 state_values = []
-            state_conf = extraction.state.confidence
-            state_is_region = False
+            state_conf = filters.state.confidence
+            state_is_region = filters.state.is_region
 
-        filters = FiltersOutput(
+        filters_out = FiltersOutput(
             investigator_name=FilterFieldOutput(
-                value=extraction.investigator_name.value,
-                confidence=extraction.investigator_name.confidence,
+                value=filters.investigator_name.value,
+                confidence=filters.investigator_name.confidence,
             ),
             site_name=FilterFieldOutput(
-                value=extraction.site_name.value,
-                confidence=extraction.site_name.confidence,
+                value=filters.site_name.value,
+                confidence=filters.site_name.confidence,
             ),
             city=FilterFieldOutput(value=city_value, confidence=city_conf),
             state=StateFilterOutput(
@@ -151,12 +220,12 @@ class ResponseAssembler:
                 is_region=state_is_region,
             ),
             phase=FilterFieldOutput(
-                value=extraction.phase.value,
-                confidence=extraction.phase.confidence,
+                value=filters.phase.value,
+                confidence=filters.phase.confidence,
             ),
         )
 
-        processing_time_ms = int((time.time() - start_time) * 1000)
+        processing_time_ms = int((time.perf_counter() - start_time) * 1000)
 
         metadata = MetadataOutput(
             processing_time_ms=processing_time_ms,
@@ -167,6 +236,7 @@ class ResponseAssembler:
 
         return NLPOutput(
             snomed_terms=included,
-            filters=filters,
+            filters=filters_out,
+            metric_filters=metric_filters or [],
             metadata=metadata,
         )

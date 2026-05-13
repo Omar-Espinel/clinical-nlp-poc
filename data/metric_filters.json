@@ -1,0 +1,410 @@
+[
+  {
+    "canonical_label": "total_studies_with_advarra",
+    "data_type": "numeric",
+    "synonyms": [
+      "total studies with advarra",
+      "studies with advarra",
+      "total advarra studies",
+      "advarra study count",
+      "advarra studies count",
+      "total studies at advarra",
+      "number of advarra studies",
+      "advarra portfolio size",
+      "studies in advarra",
+      "advarra trial count",
+      "total trials with advarra",
+      "advarra study portfolio"
+    ],
+    "clarification_question": "What total Advarra study count are you looking for in {trigger}?",
+    "clarification_options": [
+      "Under 100",
+      "100–500",
+      "500–1000",
+      "Over 1000",
+      "No preference"
+    ],
+    "implied_operators": {
+      "large": "gt",
+      "small": "lt",
+      "many": "gt",
+      "few": "lt",
+      "no": "eq",
+      "zero": "eq"
+    },
+    "fuzzy_threshold": 78
+  },
+  {
+    "canonical_label": "studies_matching_search",
+    "data_type": "numeric",
+    "synonyms": [
+      "studies matching search",
+      "studies matching my search",
+      "matching studies",
+      "studies matching the search",
+      "search match count",
+      "matched studies count",
+      "studies that match",
+      "studies in my search",
+      "studies in this search",
+      "studies matching criteria",
+      "studies matching my filters",
+      "matching study count"
+    ],
+    "clarification_question": "How many matching studies are you targeting in {trigger}?",
+    "clarification_options": [
+      "Under 10",
+      "10–50",
+      "50–200",
+      "Over 200",
+      "No preference"
+    ],
+    "implied_operators": {
+      "large": "gt",
+      "small": "lt",
+      "no": "eq",
+      "zero": "eq"
+    },
+    "fuzzy_threshold": 78
+  },
+  {
+    "canonical_label": "active_trials",
+    "data_type": "numeric",
+    "synonyms": [
+      "active trials",
+      "active studies",
+      "ongoing trials",
+      "ongoing studies",
+      "currently active trials",
+      "currently enrolling trials",
+      "live trials",
+      "live studies",
+      "trials in progress",
+      "studies in progress"
+    ],
+    "clarification_question": "How many active trials matter for {trigger}?",
+    "clarification_options": [
+      "Under 5",
+      "5–25",
+      "25–100",
+      "Over 100",
+      "No preference"
+    ],
+    "implied_operators": {
+      "high": "gt",
+      "low": "lt",
+      "many": "gt",
+      "few": "lt",
+      "no": "eq",
+      "zero": "eq"
+    },
+    "fuzzy_threshold": 80
+  },
+  {
+    "canonical_label": "most_recent_approval_date",
+    "data_type": "date",
+    "synonyms": [
+      "most recent approval date",
+      "most recent approval",
+      "latest approval date",
+      "latest approval",
+      "last approval date",
+      "last approval",
+      "recent approval date",
+      "most recent ibr approval",
+      "most recent irb approval",
+      "latest irb approval",
+      "most recent approval month",
+      "last approved date"
+    ],
+    "clarification_question": "What approval recency are you looking for in {trigger}?",
+    "clarification_options": [
+      "Last 6 months",
+      "Last 12 months",
+      "Last 2 years",
+      "Older than 2 years",
+      "No preference"
+    ],
+    "implied_operators": {
+      "since": "gte",
+      "after": "gt",
+      "before": "lt",
+      "on or after": "gte",
+      "on or before": "lte",
+      "in": "eq",
+      "between": "between",
+      "recent": "gte",
+      "recently": "gte"
+    },
+    "fuzzy_threshold": 78
+  },
+  {
+    "canonical_label": "avg_days_respond_to_queries",
+    "data_type": "numeric",
+    "synonyms": [
+      "average days to respond to queries",
+      "avg days to respond to queries",
+      "average query response time",
+      "average days respond to queries",
+      "query response days",
+      "days to respond to queries",
+      "query response time",
+      "avg query response time",
+      "query turnaround",
+      "query turnaround time",
+      "query response latency",
+      "time to respond to queries"
+    ],
+    "clarification_question": "What query response time threshold matters for {trigger}?",
+    "clarification_options": [
+      "Under 3 days",
+      "3–7 days",
+      "7–14 days",
+      "Over 14 days",
+      "No preference"
+    ],
+    "implied_operators": {
+      "fast": "lt",
+      "quick": "lt",
+      "rapid": "lt",
+      "slow": "gt",
+      "high": "gt",
+      "low": "lt"
+    },
+    "fuzzy_threshold": 75
+  },
+  {
+    "canonical_label": "avg_days_submission_to_approval",
+    "data_type": "numeric",
+    "synonyms": [
+      "average days submission to approval",
+      "avg days submission to approval",
+      "days submission to approval",
+      "submission to approval time",
+      "submission to approval days",
+      "average approval turnaround",
+      "approval turnaround time",
+      "submission approval cycle",
+      "days to approval from submission",
+      "submission to irb approval",
+      "time from submission to approval",
+      "avg submission to approval"
+    ],
+    "clarification_question": "What submission-to-approval timeline are you targeting in {trigger}?",
+    "clarification_options": [
+      "Under 14 days",
+      "14–30 days",
+      "30–60 days",
+      "Over 60 days",
+      "No preference"
+    ],
+    "implied_operators": {
+      "fast": "lt",
+      "quick": "lt",
+      "slow": "gt",
+      "high": "gt",
+      "low": "lt"
+    },
+    "fuzzy_threshold": 75
+  },
+  {
+    "canonical_label": "total_protocol_deviations_all_studies",
+    "data_type": "numeric",
+    "synonyms": [
+      "total protocol deviations all studies",
+      "protocol deviations in all my studies",
+      "protocol deviations across all studies",
+      "total protocol deviations",
+      "protocol deviations all studies",
+      "deviation count all studies",
+      "total deviations across studies",
+      "all study protocol deviations",
+      "protocol deviation total",
+      "total pds all studies",
+      "protocol deviations in all studies",
+      "total deviation count"
+    ],
+    "clarification_question": "What total protocol deviation count matters for {trigger}?",
+    "clarification_options": [
+      "0",
+      "1–10",
+      "10–50",
+      "Over 50",
+      "No preference"
+    ],
+    "implied_operators": {
+      "high": "gt",
+      "low": "lt",
+      "many": "gt",
+      "few": "lt",
+      "no": "eq",
+      "zero": "eq"
+    },
+    "fuzzy_threshold": 78
+  },
+  {
+    "canonical_label": "total_protocol_deviations_matching_studies",
+    "data_type": "numeric",
+    "synonyms": [
+      "total protocol deviations matching studies",
+      "protocol deviations in matching studies",
+      "protocol deviations across my matching studies",
+      "protocol deviations matching studies",
+      "deviation count matching studies",
+      "protocol deviations for matching studies",
+      "pds in matching studies",
+      "matching studies protocol deviations",
+      "total deviations matching studies",
+      "protocol deviation total matching",
+      "matching study protocol deviations",
+      "deviations in matching studies"
+    ],
+    "clarification_question": "What protocol deviation count for matching studies are you targeting in {trigger}?",
+    "clarification_options": [
+      "0",
+      "1–5",
+      "5–20",
+      "Over 20",
+      "No preference"
+    ],
+    "implied_operators": {
+      "high": "gt",
+      "low": "lt",
+      "many": "gt",
+      "few": "lt",
+      "no": "eq",
+      "zero": "eq"
+    },
+    "fuzzy_threshold": 78
+  },
+  {
+    "canonical_label": "avg_enrollment_matching_studies",
+    "data_type": "numeric",
+    "synonyms": [
+      "average enrollment matching studies",
+      "avg enrollment matching studies",
+      "mean enrollment matching studies",
+      "average enrollment in matching studies",
+      "enrollment average matching studies",
+      "average matched enrollment",
+      "avg matched enrollment",
+      "mean matched enrollment",
+      "enrollment per matching study",
+      "matching study enrollment average"
+    ],
+    "clarification_question": "What average enrollment per matching study are you targeting in {trigger}?",
+    "clarification_options": [
+      "Under 25",
+      "25–100",
+      "100–500",
+      "Over 500",
+      "No preference"
+    ],
+    "implied_operators": {
+      "high": "gt",
+      "low": "lt",
+      "large": "gt",
+      "small": "lt"
+    },
+    "fuzzy_threshold": 78
+  },
+  {
+    "canonical_label": "avg_enrollment_matching_ta",
+    "data_type": "numeric",
+    "synonyms": [
+      "average enrollment matching ta",
+      "avg enrollment matching ta",
+      "average enrollment matching therapeutic area",
+      "avg enrollment matching therapeutic area",
+      "average enrollment ta",
+      "average ta enrollment",
+      "avg ta enrollment",
+      "mean ta enrollment",
+      "enrollment by therapeutic area",
+      "enrollment per ta",
+      "enrollment for matching therapeutic area",
+      "enrollment in matching ta"
+    ],
+    "clarification_question": "What average enrollment for the matching therapeutic area are you targeting in {trigger}?",
+    "clarification_options": [
+      "Under 25",
+      "25–100",
+      "100–500",
+      "Over 500",
+      "No preference"
+    ],
+    "implied_operators": {
+      "high": "gt",
+      "low": "lt",
+      "large": "gt",
+      "small": "lt"
+    },
+    "fuzzy_threshold": 78
+  },
+  {
+    "canonical_label": "avg_screening_rate",
+    "data_type": "numeric",
+    "synonyms": [
+      "average screening rate",
+      "avg screening rate",
+      "mean screening rate",
+      "screening rate average",
+      "screening rate",
+      "patient screening rate",
+      "average screening rate per site",
+      "screening velocity",
+      "screening throughput",
+      "screen rate"
+    ],
+    "clarification_question": "What screening rate threshold matters for {trigger}?",
+    "clarification_options": [
+      "Under 1 per week",
+      "1–5 per week",
+      "5–10 per week",
+      "Over 10 per week",
+      "No preference"
+    ],
+    "implied_operators": {
+      "high": "gt",
+      "low": "lt",
+      "fast": "gt",
+      "slow": "lt"
+    },
+    "fuzzy_threshold": 78
+  },
+  {
+    "canonical_label": "avg_days_to_fpe",
+    "data_type": "numeric",
+    "synonyms": [
+      "average days to fpe",
+      "avg days to fpe",
+      "days to fpe",
+      "days to first patient enrolled",
+      "time to fpe",
+      "time to first patient enrolled",
+      "first patient enrolled days",
+      "fpe time",
+      "fpe days",
+      "days to first patient",
+      "average days to first patient enrolled",
+      "time to first enrollment"
+    ],
+    "clarification_question": "What time to first patient enrolled matters for {trigger}?",
+    "clarification_options": [
+      "Under 30 days",
+      "30–90 days",
+      "90–180 days",
+      "Over 180 days",
+      "No preference"
+    ],
+    "implied_operators": {
+      "fast": "lt",
+      "quick": "lt",
+      "rapid": "lt",
+      "slow": "gt",
+      "high": "gt",
+      "low": "lt"
+    },
+    "fuzzy_threshold": 75
+  }
+]

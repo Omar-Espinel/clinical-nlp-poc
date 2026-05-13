@@ -1,4 +1,4 @@
-id,category,description,input,expected_snomed_codes,expected_snomed_absent,expected_city,expected_state,expected_phase,expected_investigator_name,expected_site_name
+id,category,description,input,expected_snomed_codes,expected_snomed_absent,expected_city,expected_state,expected_phase,expected_investigator_name,expected_site_name,expected_metric_field,expected_metric_operator,expected_type
 TC001,condition+location+phase,T2DM with location and phase,"Phase 3 type 2 diabetes trials in New York",44054006,,New York City,New York,Phase 3,,
 TC002,abbreviation,T2DM abbreviation expansion,"T2DM clinical research phase 2",44054006,,,,,Phase 2,,
 TC003,city-alias,NYC alias resolves correctly,"Heart failure trials in NYC",84114007,,New York City,New York,,,
@@ -99,3 +99,9 @@ TC097,condition,Type 1 diabetes,"T1DM type 1 diabetes prevention trials children
 TC098,condition,Hepatitis B,"Chronic hepatitis B HBV cure trials",66071002,,,,,,
 TC099,location-region,Southeast US,"Cardiology hypertension trials in the Southeast",38341003,,,,,,
 TC100,location-region,Southwest region,"Diabetes trials in the Southwest",73211009,,,,,,
+TC101,metric-exact,AC match active_trials with SNOMED and phase,"phase 3 diabetes active trials over 25",73211009,,,,Phase 3,,,active_trials,gt,
+TC102,metric-fuzzy,Fuzzy match advarra studies with cancer,"advara studies count cancer trials",,,,,,,,total_studies_with_advarra,,
+TC103,metric-clarification,Single metric no value fires clarification,"matching studies for diabetes",73211009,,,,,,,studies_matching_search,,clarification
+TC104,metric-multi-clarification,Multi metric no value fires clarification on first field,"fast query response high screening rate diabetes phase 2",73211009,,,,Phase 2,,,avg_days_respond_to_queries,,clarification
+TC105,metric-date,Date metric with gte operator,"diabetes most recent approval date since 2025",73211009,,,,,,,most_recent_approval_date,gte,
+TC106,metric-multi-turn,Multi-turn resolves to search,"average enrollment matching ta diabetes>>>100–500",,,,,,,,,avg_enrollment_matching_ta,,search
