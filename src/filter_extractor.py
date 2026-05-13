@@ -179,8 +179,9 @@ class FilterExtractor:
         if not safe_matches:
             return ""
 
+        # rev2 §3.4: include data_type per field so the LLM can distinguish numeric vs date.
         fields_block = "\n".join(
-            f"  - Field key: {m.canonical_field} ({m.canonical_label})"
+            f"  - Field key: {m.canonical_field} ({m.canonical_label}) — data_type={m.data_type}"
             for m in safe_matches
         )
 
@@ -209,7 +210,12 @@ class FilterExtractor:
             'Include "metric_fields" in your JSON response even if all values are null.\n'
             "Do NOT invent values not present in the query.\n"
             "Do NOT use camelCase keys.\n"
-            'If the user expressed "No preference" for a field, emit operator_text="any" and value=null for that field.'
+            'If the user expressed "No preference" for a field, emit operator_text="any" and value=null for that field.\n'
+            'If data_type=date, value MUST be in MM/YYYY format (e.g. "01/2026"). '
+            'Convert relative phrases like "since June 2025" to "06/2025". '
+            "If you cannot determine an explicit month/year, emit value=null.\n"
+            'When operator is "between", emit both value (lower bound) and value_end '
+            "(upper bound) — same data_type. For all other operators, value_end MUST be null."
         )
 
     def _validate(
@@ -299,9 +305,24 @@ class FilterExtractor:
                     if operator == "any" and match.implied_operator != "any":
                         operator = match.implied_operator
 
+                    raw_value = raw_entry.get("value")
+                    # LLM may return numeric primitives — coerce to str for normalize_value.
+                    if raw_value is not None and not isinstance(raw_value, str):
+                        raw_value = str(raw_value)
                     value = MetricFilterNormalizer.normalize_value(
-                        raw_entry.get("value"), data_type, operator
+                        raw_value, data_type, operator
                     )
+
+                    # rev2 §3.3b: extract value_end too (used only for operator='between').
+                    raw_value_end = raw_entry.get("value_end")
+                    if operator == "between" and raw_value_end is not None:
+                        if not isinstance(raw_value_end, str):
+                            raw_value_end = str(raw_value_end)
+                        value_end = MetricFilterNormalizer.normalize_value(
+                            raw_value_end, data_type, operator
+                        )
+                    else:
+                        value_end = None
 
                     # unit: server-derived — for v1 all 12 fields are numeric without
                     # specific units; set to None per spec §4 rev2
@@ -314,6 +335,7 @@ class FilterExtractor:
                             operator=operator,
                             data_type=data_type,
                             value=value,
+                            value_end=value_end,
                             original_text=match.matched_text,
                             confidence=match.confidence,
                             unit=server_unit,
