@@ -11,17 +11,21 @@ import unicodedata
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 import ahocorasick
 from rapidfuzz.fuzz import token_sort_ratio
-from pydantic import BaseModel, ConfigDict, field_validator, ValidationInfo
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator, ValidationInfo
 
 logger = logging.getLogger(__name__)
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 VALID_OPERATORS: frozenset[str] = frozenset({"lt", "lte", "gt", "gte", "eq", "between", "any"})
+
+# rev2 Sec-SB1: year-range floor for normalize_date (DOB-leak mitigation).
+# IRB approvals predating 2000 are out of scope for current trials.
+MIN_VALID_YEAR: int = 2000
 
 VALID_UNITS: frozenset[Optional[str]] = frozenset(
     {"patients", "months", "days", "sites", "percent", "queries", None}
@@ -91,6 +95,9 @@ class MetricFilterOutput(BaseModel):
     operator: str
     data_type: str
     value: Optional[Union[float, str]]
+    # rev2 §3.3b: value_end supports the `between` operator for both numerics and dates.
+    # MUST be None for any non-`between` operator; MUST be non-None when operator='between'.
+    value_end: Optional[Union[float, str]] = None
     original_text: str
     confidence: float
     unit: Optional[str] = None
@@ -109,20 +116,19 @@ class MetricFilterOutput(BaseModel):
             raise ValueError(f"unit must be one of {VALID_UNITS}, got {v!r}")
         return v
 
-    @field_validator("value", mode="before")
-    @classmethod
-    def _validate_value(cls, v, info: ValidationInfo) -> Optional[Union[float, str]]:
-        if "operator" not in info.data:
-            raise ValueError("operator field missing — value validation requires operator")
-        if "data_type" not in info.data:
-            raise ValueError("data_type field missing — value validation requires data_type")
-        operator = info.data["operator"]
-        data_type = info.data["data_type"]
+    @staticmethod
+    def _coerce_value_field(v: Any, data_type: str, operator: str) -> Optional[Union[float, str]]:
+        """Shared coercion body for both `value` and `value_end` field validators.
+
+        - None passes through as None.
+        - operator='any' requires the coerced value to be None.
+        - Sentinel strings ("null", "", "none", "no preference") coerce to None.
+        - data_type='numeric': float(v) or None on parse error.
+        - data_type='date': MM/YYYY-format string via normalize_date or None.
+        """
         if v is None:
-            if operator not in {"any"}:
-                return None
             return None
-        # S10: operator=any ↔ value=None invariant
+        # S10: operator=any ↔ value=None invariant — also applies to value_end.
         if operator == "any":
             if isinstance(v, str) and v.strip().lower() in {"null", "", "none", "no preference"}:
                 return None
@@ -134,7 +140,96 @@ class MetricFilterOutput(BaseModel):
                 return float(v)
             except (TypeError, ValueError):
                 return None
+        # rev2 §3.2: explicit date branch with isinstance guard (QA-M1) and
+        # operator='any' short-circuit (Sec-SM1, handled above).
+        if data_type == "date":
+            if not isinstance(v, str):
+                # LLM occasionally returns a number; reject — date values must be string-shaped.
+                return None
+            parsed = MetricFilterNormalizer.normalize_date(v, date.today())
+            if parsed is None:
+                return None
+            return parsed
         return v
+
+    @field_validator("value", mode="before")
+    @classmethod
+    def _validate_value(cls, v, info: ValidationInfo) -> Optional[Union[float, str]]:
+        if "operator" not in info.data:
+            raise ValueError("operator field missing — value validation requires operator")
+        if "data_type" not in info.data:
+            raise ValueError("data_type field missing — value validation requires data_type")
+        operator = info.data["operator"]
+        data_type = info.data["data_type"]
+        return cls._coerce_value_field(v, data_type, operator)
+
+    @field_validator("value_end", mode="before")
+    @classmethod
+    def _validate_value_end(cls, v, info: ValidationInfo) -> Optional[Union[float, str]]:
+        # rev2 §3.3b: value_end uses the same coercion path as value.
+        # Cross-field invariants enforced separately in _validate_between_pair.
+        if v is None:
+            return None
+        if "operator" not in info.data:
+            raise ValueError("operator field missing — value_end validation requires operator")
+        if "data_type" not in info.data:
+            raise ValueError("data_type field missing — value_end validation requires data_type")
+        operator = info.data["operator"]
+        data_type = info.data["data_type"]
+        # For operator='any' the model-level validator already enforces value=None;
+        # value_end with operator='any' is also disallowed via the between-pair invariant.
+        if operator == "any":
+            # Treat sentinel strings as None; otherwise let the between-pair validator reject.
+            if isinstance(v, str) and v.strip().lower() in {"null", "", "none", "no preference"}:
+                return None
+            return None
+        return cls._coerce_value_field(v, data_type, operator)
+
+    @model_validator(mode="after")
+    def _validate_between_pair(self) -> "MetricFilterOutput":
+        """rev2 §3.3b: enforce operator/value/value_end invariants.
+
+        - operator='between' requires both value and value_end of matching data_type
+          with value <= value_end ordering.
+        - Any other operator requires value_end is None.
+        """
+        if self.operator == "between":
+            if self.value is None or self.value_end is None:
+                raise ValueError("operator='between' requires both value and value_end")
+            if self.data_type == "numeric":
+                if not isinstance(self.value, (int, float)) or not isinstance(self.value_end, (int, float)):
+                    raise ValueError(
+                        "between with data_type=numeric requires numeric value AND value_end"
+                    )
+                if self.value > self.value_end:
+                    raise ValueError(
+                        f"between requires value ({self.value}) <= value_end ({self.value_end})"
+                    )
+            elif self.data_type == "date":
+                if not isinstance(self.value, str) or not isinstance(self.value_end, str):
+                    raise ValueError(
+                        "between with data_type=date requires MM/YYYY string value AND value_end"
+                    )
+                # Both are guaranteed MM/YYYY post-_coerce_value_field. Compare as (year, month).
+                try:
+                    v_yyyy, v_mm = int(self.value[3:]), int(self.value[:2])
+                    ve_yyyy, ve_mm = int(self.value_end[3:]), int(self.value_end[:2])
+                except (ValueError, IndexError) as exc:
+                    raise ValueError(
+                        "between with data_type=date requires MM/YYYY-formatted strings"
+                    ) from exc
+                if (v_yyyy, v_mm) > (ve_yyyy, ve_mm):
+                    raise ValueError(
+                        f"between requires value <= value_end "
+                        f"(got {self.value} > {self.value_end})"
+                    )
+        else:
+            if self.value_end is not None:
+                raise ValueError(
+                    f"value_end only allowed with operator='between' "
+                    f"(got operator={self.operator!r})"
+                )
+        return self
 
 
 # ── MetricFilterNormalizer static helpers ─────────────────────────────────────
@@ -158,29 +253,38 @@ class MetricFilterNormalizer:
 
     @staticmethod
     def normalize_date(raw_value: str, current_date: date) -> Optional[str]:
-        """Parse a date string into MM/YYYY format. Returns None if unparseable."""
+        """Parse a date string into MM/YYYY format. Returns None if unparseable.
+
+        rev2 §3.9 (Sec-SB1): rejects years outside [MIN_VALID_YEAR, current_date.year + 1]
+        to mitigate DOB-leak risk (e.g. "patient born 03/1985" would otherwise survive).
+        """
         if not raw_value:
             return None
         raw = raw_value.strip()
+        mm: Optional[int] = None
+        yyyy: Optional[int] = None
         # MM/YYYY
         m = re.fullmatch(r"(\d{1,2})/(\d{4})", raw)
         if m:
             mm, yyyy = int(m.group(1)), int(m.group(2))
-            if 1 <= mm <= 12:
-                return f"{mm:02d}/{yyyy}"
         # YYYY-MM
-        m = re.fullmatch(r"(\d{4})-(\d{2})", raw)
-        if m:
-            yyyy, mm = int(m.group(1)), int(m.group(2))
-            if 1 <= mm <= 12:
-                return f"{mm:02d}/{yyyy}"
+        if mm is None:
+            m = re.fullmatch(r"(\d{4})-(\d{2})", raw)
+            if m:
+                yyyy, mm = int(m.group(1)), int(m.group(2))
         # YYYY-MM-DD
-        m = re.fullmatch(r"(\d{4})-(\d{2})-\d{2}", raw)
-        if m:
-            yyyy, mm = int(m.group(1)), int(m.group(2))
-            if 1 <= mm <= 12:
-                return f"{mm:02d}/{yyyy}"
-        return None
+        if mm is None:
+            m = re.fullmatch(r"(\d{4})-(\d{2})-\d{2}", raw)
+            if m:
+                yyyy, mm = int(m.group(1)), int(m.group(2))
+        if mm is None or yyyy is None:
+            return None
+        if not (1 <= mm <= 12):
+            return None
+        # rev2 §3.9: reject implausible years (DOB-leak mitigation, Sec-SB1).
+        if yyyy < MIN_VALID_YEAR or yyyy > current_date.year + 1:
+            return None
+        return f"{mm:02d}/{yyyy}"
 
     @staticmethod
     def normalize_value(
