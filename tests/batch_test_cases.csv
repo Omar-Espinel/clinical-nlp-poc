@@ -99,9 +99,9 @@ TC097,condition,Type 1 diabetes,"T1DM type 1 diabetes prevention trials children
 TC098,condition,Hepatitis B,"Chronic hepatitis B HBV cure trials",66071002,,,,,,
 TC099,location-region,Southeast US,"Cardiology hypertension trials in the Southeast",38341003,,,,,,
 TC100,location-region,Southwest region,"Diabetes trials in the Southwest",73211009,,,,,,
-TC101,metric-exact,AC match enrollment count with SNOMED and phase,"phase 3 diabetes enrollment count over 500",44054006,,,,Phase 3,,,enrollment_count,gt,
-TC102,metric-fuzzy,Fuzzy match enrollment count with cancer SNOMED,"enrolmment count over 500 cancer trials",363346000,,,,,,enrollment_count,gt,
-TC103,metric-clarification,Single metric no value fires clarification,"sites for diabetes",73211009,,,,,,sites_count,,clarification
-TC104,metric-multi-clarification,Multi metric no value fires clarification on first field,"fast response high enrollment diabetes phase 2",73211009,,,,Phase 2,,,avg_days_to_first_response,,clarification
-TC105,metric-any,Explicit any operator enrollment count,"any enrollment count diabetes phase 2",73211009,,,,Phase 2,,,enrollment_count,any,
-TC106,metric-multi-turn,Multi-turn no-preference resolves to search,"fast response time diabetes>>>No preference",73211009,,,,,,avg_days_to_first_response,,search
+TC101,metric-exact,AC match active_trials with SNOMED and phase,"phase 3 diabetes active trials over 25",73211009,,,,Phase 3,,,active_trials,gt,
+TC102,metric-fuzzy,Fuzzy match advarra studies with cancer,"advara studies count cancer trials",,,,,,,,total_studies_with_advarra,,
+TC103,metric-clarification,Single metric no value fires clarification,"matching studies for diabetes",73211009,,,,,,,studies_matching_search,,clarification
+TC104,metric-multi-clarification,Multi metric no value fires clarification on first field,"fast query response high screening rate diabetes phase 2",73211009,,,,Phase 2,,,avg_days_respond_to_queries,,clarification
+TC105,metric-date,Date metric with gte operator,"diabetes most recent approval date since 2025",73211009,,,,,,,most_recent_approval_date,gte,
+TC106,metric-multi-turn,Multi-turn resolves to search,"average enrollment matching ta diabetes>>>100–500",,,,,,,,,avg_enrollment_matching_ta,,search
