@@ -1,146 +1,230 @@
-# Deployment Guide — Clinical Research NLP
+# Deployment Guide — Clinical Research NLP API
 
-## Running Locally
+## Overview
 
-**Step 1:** Clone or download the project files
+The system exposes two interfaces:
+- **REST API** (`api.py`) — FastAPI + Uvicorn, primary interface for production consumers
+- **Streamlit UI** (`app.py`) — chat interface for direct human use, runs independently
 
-**Step 2:** Install all dependencies
-```bash
+Both share the same `src/` pipeline and `data/` files.
+
+---
+
+## Environment Variables
+
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `GROQ_API_KEY` | Yes | — | Groq LLM authentication |
+| `API_KEY` | Recommended | None (open) | Protects API endpoints with `X-API-Key` header |
+| `ALLOWED_ORIGINS` | Recommended | `http://localhost:3000` | Comma-separated CORS allowlist |
+| `LLM_PROVIDER` | No | `groq` | LLM provider selection |
+| `SNOMED_SEARCH_STRATEGY` | No | `hybrid_cascade` | SNOMED matching strategy |
+| `AMBIG_STRICT_VALIDATION` | No | `true` | Registry validation strictness |
+
+Create a `.env` file in the project root:
+GROQ_API_KEY=your_key_here
+API_KEY=your_internal_api_key_here
+ALLOWED_ORIGINS=http://localhost:3000,https://your-frontend.com
+
+
+---
+
+## Local Development
+
+### Prerequisites
+- Python 3.13
+- pip
+
+### Install
+
 pip install -r requirements.txt
-```
 
-**Step 3:** Copy the environment template
-```bash
-cp .env.example .env
-```
 
-**Step 4:** Add your Groq API key to `.env`
-```
-GROQ_API_KEY=your_groq_api_key_here
-```
+### Run the API
 
-**Step 5:** Start the Streamlit application
-```bash
+uvicorn api:app --reload --port 8000
+
+
+### Run the Streamlit UI
+
 streamlit run app.py
-```
 
-**Step 6:** Open [http://localhost:8501](http://localhost:8501) in your browser
 
-> **Note:** First load takes 30–60 seconds while sentence-transformers
-> downloads and loads the all-MiniLM-L6-v2 model (~90 MB).
-> Subsequent starts are faster as the model is cached locally.
+### API Endpoints
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/health/live` | None | Liveness probe — is the process alive |
+| `GET` | `/health/ready` | None | Readiness probe — is pipeline loaded |
+| `POST` | `/v1/query` | X-API-Key | Submit a query |
+| `DELETE` | `/v1/session/{session_id}` | X-API-Key | Clear a session |
+
+Interactive docs (when running locally):
+
+http://localhost:8000/docs
+
+
+### Test the API locally
+
+Liveness
+curl http://localhost:8000/health/live
+
+Readiness
+curl http://localhost:8000/health/ready
+
+First query — expects clarification response for ambiguous term
+curl -X POST http://localhost:8000/v1/query
+-H "Content-Type: application/json"
+-H "X-API-Key: your_internal_api_key_here"
+-d "{"query": "cancer trials in Boston"}"
+
+Multi-turn — paste session_id from above response
+curl -X POST http://localhost:8000/v1/query
+-H "Content-Type: application/json"
+-H "X-API-Key: your_internal_api_key_here"
+-d "{"query": "Lung Cancer", "session_id": "<paste-session-id>"}"
+
+Clear a session
+curl -X DELETE http://localhost:8000/v1/session/<paste-session-id>
+-H "X-API-Key: your_internal_api_key_here"
+
+---
+
+## Docker
+
+### Prerequisites
+- Docker Desktop (Windows/Mac) or Docker Engine (Linux)
+
+### Build
+docker build -t clinical-nlp-api .
+
+
+First build takes 3-5 minutes (pip install + sentence-transformer model download ~90MB).
+Subsequent builds use layer cache and are much faster.
+
+### Run
+
+docker run -p 8000:8000
+-e GROQ_API_KEY=your_key_here
+-e API_KEY=your_internal_api_key_here
+-e ALLOWED_ORIGINS=http://localhost:3000
+clinical-nlp-api
+
+
+### Run with a .env file
+
+docker run -p 8000:8000 --env-file .env clinical-nlp-api
+
+### Verify
+
+curl http://localhost:8000/health/live
+curl http://localhost:8000/health/ready
+
+
+### Container behaviour
+
+- Non-root user (`nlp`) inside container
+- Docker HEALTHCHECK polls `/health/live` every 30s
+- Pipeline loads at startup — container is not ready until `/health/ready` returns 200
+- First startup takes 30-60s while the embedding model initializes
+- Sessions are in-memory — cleared on container restart
+
+---
+
+## Production Deployment (Recommended Minimum)
+
+### Architecture
+[ALB / Cloudflare / nginx] <- TLS termination + rate limiting
+|
+[Docker container] <- gunicorn + uvicorn workers
+|
+[Redis] <- shared session store (future)
+
+
+### Switch to gunicorn for production
+
+Replace the `CMD` in `Dockerfile`:
+
+CMD ["gunicorn", "api:app",
+"--workers", "2",
+"--worker-class", "uvicorn.workers.UvicornWorker",
+"--threads", "4",
+"--bind", "0.0.0.0:8000",
+"--timeout", "60",
+"--graceful-timeout", "30",
+"--access-logfile", "-",
+"--error-logfile", "-"]
+
+
+Add to `requirements.txt`:
+
+gunicorn>=22.0.0
+
+
+**Worker memory note:** each worker loads its own pipeline instance (~120MB RAM).
+2 workers = ~240MB baseline. Size your VM accordingly (minimum 1GB RAM recommended).
+
+### Environment variable checklist for production
+
+- [ ] `GROQ_API_KEY` — from secrets manager, not plain env var
+- [ ] `API_KEY` — strong random string (e.g. `openssl rand -hex 32`)
+- [ ] `ALLOWED_ORIGINS` — locked to your actual frontend domain(s)
+- [ ] `AMBIG_STRICT_VALIDATION=true` — default, keep it
+
+### Known production gaps (POC limitations)
+
+| Gap | Impact | Fix |
+|---|---|---|
+| Sessions in-memory | Lost on restart, not shared across workers | Replace with Redis |
+| No per-IP rate limiting | Abuse possible before hitting Python | Add nginx or API Gateway in front |
+| No audit logging | Compliance gap | Add structured logging pipeline |
+| No authentication beyond API key | No per-user identity | Add OAuth2 / JWT layer |
+| Single container | No HA | Add orchestration (ECS, K8s, Cloud Run) |
 
 ---
 
 ## Running Tests
 
-From the project root directory:
-```bash
+### Unit + integration tests (pytest)
+
+pytest tests/test_sufficiency_gate.py
+tests/test_conversation.py
+tests/test_snomed_strategies.py
+tests/test_negation.py
+tests/test_llm_provider.py
+tests/test_ambiguity_coverage.py
+tests/test_metric_filters.py
+
+
+### Batch evaluation
+
+python tests/batch_eval.py
+python tests/batch_eval.py --limit 10
+python tests/batch_eval.py --strategy aho_corasick
+
+
+### QA agent (rate-limited for Groq free tier)
+
+python qa_testing/test_agent.py
+python qa_testing/test_agent.py --limit 20
+python qa_testing/test_agent.py --category injection
+
+
+### Legacy regression (kept for compatibility)
+
 python tests/run_tests.py
-```
 
-Requires `GROQ_API_KEY` in `.env` file.
-
-- Exit code `0` = 15 or more tests passed
-- Exit code `1` = fewer than 15 tests passed
-
-The test runner prints `PASS` or `FAIL` with reasons for each of the 20 test cases,
-then prints a final summary line.
 
 ---
 
-## Deploying to HuggingFace Spaces (Free, Shareable URL)
+## HuggingFace Spaces (Streamlit UI only)
 
-**Step 1:** Create a free account at [huggingface.co](https://huggingface.co)
+The Streamlit UI (`app.py`) can still be deployed to HuggingFace Spaces independently
+of the API service.
 
-**Step 2:** Go to **Spaces** and click **New Space**
+1. Create a Space with **Streamlit** SDK
+2. Upload all project files
+3. Add `GROQ_API_KEY` as a Space Secret
+4. The Space auto-builds in 5-10 minutes
 
-**Step 3:** Choose **Streamlit** as the SDK and give your Space a name
-
-**Step 4:** Upload all project files:
-- `app.py`
-- `requirements.txt`
-- `README.md`
-- `.env.example`
-- `src/` directory (all files)
-- `data/` directory (both files)
-
-> Do **not** upload `.env` — use Secrets instead (see Step 5).
-
-**Step 5:** Go to your Space **Settings → Secrets** and add:
-```
-Name:  GROQ_API_KEY
-Value: your_actual_groq_api_key
-```
-
-**Step 6:** The Space will auto-build and deploy (5–10 minutes)
-
-**Step 7:** Your app is live at `https://huggingface.co/spaces/YOUR_USERNAME/YOUR_SPACE_NAME`
-
-**Step 8:** Share the URL — anyone can use it without a HuggingFace account
-
-> **Note:** The first cold start on HuggingFace takes 2–5 minutes while
-> packages install and models download. Subsequent loads within the same
-> session are faster. Free-tier Spaces may sleep after inactivity.
-
----
-
-## Getting a Free Groq API Key
-
-**Step 1:** Go to [console.groq.com](https://console.groq.com)
-
-**Step 2:** Sign up for a free account (no credit card required)
-
-**Step 3:** Navigate to the **API Keys** section in the left sidebar
-
-**Step 4:** Click **Create API Key** and give it a name
-
-**Step 5:** Copy the key immediately (it is only shown once)
-
-**Step 6:** Add to `.env` for local use:
-```
-GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxx
-```
-Or add to HuggingFace Spaces Secrets for cloud deployment.
-
-**Free tier limits:** Up to 30 requests per minute, 500 requests per day.
-For heavier usage, upgrade to a paid Groq plan.
-
----
-
-## Environment Variables Reference
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `GROQ_API_KEY` | Yes | Groq API key from console.groq.com |
-
-No other environment variables are needed. All other configuration
-(data file paths, model names, thresholds) is hardcoded with sensible
-defaults inside the source files.
-
----
-
-## Troubleshooting
-
-**"GROQ_API_KEY not found" error:**
-- Ensure `.env` exists in the project root (not inside `src/`)
-- Verify the key name is exactly `GROQ_API_KEY` (case-sensitive)
-- On HuggingFace, confirm the secret was saved under Settings → Secrets
-
-**First load is slow (30–60 seconds):**
-- This is expected — sentence-transformers downloads the embedding model
-- Subsequent loads reuse the cached model
-
-**"Rate limit reached" error:**
-- Free Groq tier allows 30 requests/minute
-- Wait 60 seconds and retry
-
-**ChromaDB / semantic search unavailable:**
-- The app degrades gracefully — exact, synonym, and fuzzy matching still work
-- Check that `torch==2.2.2` and `sentence-transformers==2.6.1` are installed
-- Review logs for the specific error
-
-**Tests failing below threshold:**
-- Ensure `GROQ_API_KEY` is set in `.env`
-- Run from the project root: `python tests/run_tests.py` (not from `tests/`)
-- LLM non-determinism may occasionally cause near-threshold failures; re-run to confirm
+Note: HuggingFace Spaces does not serve the FastAPI service — only `app.py`.
