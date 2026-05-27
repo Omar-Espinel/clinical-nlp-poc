@@ -229,3 +229,21 @@ python tests/batch_eval.py --limit 10
 python qa_testing/test_agent.py --limit 20
 
 Full deployment instructions: see DEPLOYMENT.md
+
+## Database Setup (teammates)
+
+### Prerequisites
+- Docker Desktop running
+- Python 3.11+
+
+### One-time database restore
+1. Place clinical_nlp_backup.dump in the project root
+2. Double-click restore_db.bat
+3. Wait ~2 minutes
+4. Verify output shows: count = 90904
+
+### Start the app
+1. Copy .env.example to .env
+2. Add your GROQ_API_KEY and BIOPORTAL_API_KEY
+3. pip install -r requirements.txt
+4. streamlit run app.py

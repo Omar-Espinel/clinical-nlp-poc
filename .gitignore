@@ -36,3 +36,5 @@ README response.md
 response-branch-spec.md
 tests/results/
 data/athena/
+*.dump
+*.zip
