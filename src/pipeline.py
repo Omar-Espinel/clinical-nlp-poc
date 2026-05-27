@@ -132,7 +132,7 @@ class NLPPipeline:
         _strict: bool = (
             strict_validation
             if strict_validation is not None
-            else os.environ.get("AMBIG_STRICT_VALIDATION", "true").lower() == "true"
+            else os.environ.get("AMBIG_STRICT_VALIDATION", "false").lower() == "true"
         )
         self._registry = AmbiguousTermsRegistry(
             path=ambiguous_terms_path or DEFAULT_AMBIG_PATH,

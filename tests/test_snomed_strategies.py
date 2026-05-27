@@ -147,13 +147,18 @@ def test_health_check_ready():
 
 @pytest.mark.parity
 def test_registry_get_strategy():
-    """get_strategy() returns a working HybridCascadeStrategy instance."""
+    """get_strategy() returns a working strategy instance.
+
+    DEFAULT_STRATEGY is "pgvector_cascade" in production; on hosts without DB
+    access the registry auto-falls back to hybrid_cascade. Either is acceptable
+    here — the contract is "callable returns a healthy strategy."
+    """
     from src.snomed_search.registry import get_strategy, DEFAULT_STRATEGY, STRATEGY_REGISTRY
 
-    assert DEFAULT_STRATEGY == "hybrid_cascade"
+    assert DEFAULT_STRATEGY == "pgvector_cascade"
     assert "hybrid_cascade" in STRATEGY_REGISTRY
 
-    strategy = get_strategy(dictionary_path=str(CSV_PATH))
+    strategy = get_strategy(name="hybrid_cascade", dictionary_path=str(CSV_PATH))
     assert strategy.health_check()["ready"] is True
 
 
@@ -238,7 +243,7 @@ def test_registry_contains_ngram_lookup():
     from src.snomed_search.registry import STRATEGY_REGISTRY, DEFAULT_STRATEGY
 
     assert "ngram_lookup" in STRATEGY_REGISTRY
-    assert DEFAULT_STRATEGY == "hybrid_cascade"
+    assert DEFAULT_STRATEGY == "pgvector_cascade"
 
 
 @pytest.mark.parity

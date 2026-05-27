@@ -97,13 +97,45 @@ class PgVectorCascadeStrategy:
             try:
                 with conn.cursor() as cur:
                     cur.execute("SELECT 1")
+                # Close the implicit transaction opened by SELECT so the
+                # connection returns to the pool in idle state, not idle-in-txn
+                # (otherwise the next borrower's set_session() raises).
+                conn.commit()
             finally:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
                 self._db_pool.putconn(conn)
-            # Verify model is loaded (attribute presence is sufficient)
             _ = self._model
-            return {"ready": True, "strategy": "pgvector_cascade"}
         except Exception as e:  # noqa: BLE001
             return {"ready": False, "error_type": type(e).__name__}
+
+        # Attempt concept count — failure here does NOT fail the health check.
+        # Uses an explicit transaction (autocommit=False) so SET LOCAL is scoped
+        # to this single query; conn.commit()/rollback() are tracked by psycopg2
+        # and end the transaction cleanly even if the implicit BEGIN's state
+        # differs from the driver's view.
+        concept_count = None
+        count_conn = self._db_pool.getconn()
+        try:
+            count_conn.set_session(autocommit=False)
+            with count_conn.cursor() as cur:
+                cur.execute("SET LOCAL statement_timeout = 1000")
+                cur.execute("SELECT COUNT(*) FROM clinical_nlp.concepts")
+                row = cur.fetchone()
+                if row is not None:
+                    concept_count = int(row[0])
+            count_conn.commit()
+        except Exception:  # noqa: BLE001
+            try:
+                count_conn.rollback()
+            except Exception:
+                pass
+        finally:
+            self._db_pool.putconn(count_conn)
+
+        return {"ready": True, "strategy": "pgvector_cascade", "concept_count": concept_count}
 
     def search(self, query: str) -> list[SNOMEDMatch]:
         """Return SNOMED matches for *query* using the cascade strategy.
@@ -131,6 +163,12 @@ class PgVectorCascadeStrategy:
         results: list[SNOMEDMatch] = []
 
         try:
+            # Defensive: clear any inherited transaction state on the pooled
+            # connection so set_session() is legal (it errors inside a txn).
+            try:
+                conn.rollback()
+            except Exception:
+                pass
             conn.set_session(readonly=True, autocommit=True)
 
             # Step 1: exact match — return immediately if found
@@ -225,6 +263,113 @@ class PgVectorCascadeStrategy:
         )
         return self._deduplicate(results)
 
+    def get_top_neighbors(
+        self,
+        query: str,
+        n: int = 15,
+        low_threshold: float = 0.42,
+    ) -> list[SNOMEDMatch]:
+        """Return up to n SNOMEDMatch objects whose cosine similarity to query
+        falls at or above low_threshold.
+
+        Called by EmbeddingAmbiguityGate (Layer 2). NOT part of SNOMEDSearchStrategy
+        Protocol — detected via duck-typing (hasattr).
+
+        HIPAA: query text NOT logged. Only n_returned and latency_ms logged on success.
+        Error handling: any exception is caught, logged by error_type only, returns [].
+        """
+        if not query or not query.strip():
+            return []
+        if len(query) > 500:
+            return []
+
+        t0 = time.monotonic()
+        try:
+            embedding = self._model.encode(query)
+            embedding_str = (
+                "[" + ",".join(f"{v:.8f}" for v in embedding.tolist()) + "]"
+            )
+        except Exception as e:  # noqa: BLE001
+            log.error(
+                "get_top_neighbors: embedding error (error_type=%s)",
+                type(e).__name__,
+            )
+            return []
+
+        conn = None
+        try:
+            conn = self._db_pool.getconn()
+            # Defensive: clear any inherited transaction state on the pooled
+            # connection. set_session() is illegal mid-txn; conn.commit() on a
+            # connection in autocommit=True (from a prior search()) silently
+            # no-ops but leaves the driver's notion of state intact.
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            # Explicit autocommit=False so SET LOCAL binds to a real transaction
+            # that conn.commit()/rollback() track at the driver level. Raw
+            # cur.execute("BEGIN") + cur.execute("COMMIT") would not be tracked
+            # by psycopg2 and could desync the pool's view of session state.
+            conn.set_session(autocommit=False)
+            with conn.cursor() as cur:
+                cur.execute("SET LOCAL statement_timeout = 5000")
+                cur.execute(
+                    """
+                    SELECT e.concept_id, c.preferred_term,
+                           1 - (e.embedding <=> %s::vector) AS similarity
+                    FROM clinical_nlp.embeddings e
+                    JOIN clinical_nlp.concepts c ON e.concept_id = c.concept_id
+                    WHERE 1 - (e.embedding <=> %s::vector) >= %s
+                    ORDER BY similarity DESC
+                    LIMIT %s
+                    """,
+                    (embedding_str, embedding_str, low_threshold, n),
+                )
+                rows = cur.fetchall()
+            conn.commit()
+
+            matches = [
+                SNOMEDMatch(
+                    code=row[0],
+                    display=row[1],
+                    match_type="semantic",
+                    confidence=round(float(row[2]), 4),
+                    original_text=query,
+                    span=(0, max(1, len(query))),
+                    negated=False,
+                )
+                for row in rows
+            ]
+            log.debug(
+                "get_top_neighbors: n_returned=%d latency_ms=%.1f",
+                len(matches),
+                (time.monotonic() - t0) * 1000,
+            )
+            return matches
+
+        except Exception as e:  # noqa: BLE001
+            log.error(
+                "get_top_neighbors: DB error (error_type=%s)",
+                type(e).__name__,
+            )
+            if conn is not None:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+            return []
+        finally:
+            if conn is not None:
+                # Belt-and-suspenders: rollback before putback so a successful
+                # commit followed by some other failure can't leak an open txn
+                # into the pool. No-op if no txn is open.
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                self._db_pool.putconn(conn)
+
     # ------------------------------------------------------------------
     # Private helper methods
     # ------------------------------------------------------------------
@@ -316,13 +461,19 @@ class PgVectorCascadeStrategy:
                 return []
             embedding_str = "[" + ",".join(f"{v:.8f}" for v in embedding.tolist()) + "]"
             with conn.cursor() as cur:
+                # Distance < 0.40 = similarity > 0.60. The pipeline's downstream
+                # MIN_CONFIDENCE=0.60 in the assembler and OPTION_MIN_CONFIDENCE=0.70
+                # in sufficiency_gate apply the real quality bars; pre-filtering at
+                # 0.82 here under-recalled lay-term ↔ SNOMED mappings (e.g.
+                # "Lung Cancer" → "screening for malignant neoplasm of lung" at
+                # similarity 0.7147 was being dropped at SQL level).
                 cur.execute(
                     """
                     SELECT e.concept_id, c.preferred_term,
                            e.embedding <=> %s::vector AS distance
                     FROM clinical_nlp.embeddings e
                     JOIN clinical_nlp.concepts c ON e.concept_id = c.concept_id
-                    WHERE e.embedding <=> %s::vector < 0.18
+                    WHERE e.embedding <=> %s::vector < 0.40
                     ORDER BY distance
                     LIMIT 10
                     """,
