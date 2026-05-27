@@ -124,5 +124,187 @@
     "options": ["Human Immunodeficiency Virus Infection", "Hepatitis B", "Tuberculosis", "Covid-19"],
     "manual_override_terms": [],
     "max_options": 4
+  },
+  "bone": {
+    "category": "indication",
+    "question_template": "Which {trigger} condition are you looking for?",
+    "options": ["Malignant Neoplasm of Bone", "Rheumatoid Arthritis", "Ankylosing Spondylitis"],
+    "manual_override_terms": [],
+    "max_options": 3
+  },
+  "joint": {
+    "category": "indication",
+    "question_template": "Which {trigger} condition are you looking for?",
+    "options": ["Rheumatoid Arthritis", "Psoriatic Arthritis", "Ankylosing Spondylitis"],
+    "manual_override_terms": [],
+    "max_options": 3
+  },
+  "musculoskeletal": {
+    "category": "indication",
+    "question_template": "Which {trigger} condition are you looking for?",
+    "options": ["Rheumatoid Arthritis", "Psoriatic Arthritis", "Ankylosing Spondylitis", "Malignant Neoplasm of Bone"],
+    "manual_override_terms": [],
+    "max_options": 4
+  },
+  "muscle": {
+    "category": "indication",
+    "question_template": "Which muscle or movement-related condition are you looking for?",
+    "options": ["Cardiomyopathy", "Amyotrophic Lateral Sclerosis", "Rheumatoid Arthritis"],
+    "manual_override_terms": [],
+    "max_options": 3
+  },
+  "skin": {
+    "category": "indication",
+    "question_template": "Which {trigger} condition are you looking for?",
+    "options": ["Malignant Melanoma", "Psoriasis", "Psoriatic Arthritis"],
+    "manual_override_terms": [],
+    "max_options": 3
+  },
+  "dermatologic": {
+    "category": "indication",
+    "question_template": "Which {trigger} condition are you looking for?",
+    "options": ["Malignant Melanoma", "Psoriasis", "Psoriatic Arthritis"],
+    "manual_override_terms": [],
+    "max_options": 3
+  },
+  "cutaneous": {
+    "category": "indication",
+    "question_template": "Which {trigger} condition are you looking for?",
+    "options": ["Malignant Melanoma", "Psoriasis", "Psoriatic Arthritis"],
+    "manual_override_terms": [],
+    "max_options": 3
+  },
+  "gastrointestinal": {
+    "category": "indication",
+    "question_template": "Which {trigger} condition are you looking for?",
+    "options": ["Inflammatory Bowel Disease", "Crohn Disease", "Ulcerative Colitis", "Malignant Neoplasm of Colon", "Gastroesophageal Reflux Disease"],
+    "manual_override_terms": [],
+    "max_options": 5
+  },
+  "bowel": {
+    "category": "indication",
+    "question_template": "Which {trigger} condition are you looking for?",
+    "options": ["Inflammatory Bowel Disease", "Crohn Disease", "Ulcerative Colitis", "Malignant Neoplasm of Colon"],
+    "manual_override_terms": [],
+    "max_options": 4
+  },
+  "intestinal": {
+    "category": "indication",
+    "question_template": "Which {trigger} condition are you looking for?",
+    "options": ["Inflammatory Bowel Disease", "Crohn Disease", "Ulcerative Colitis"],
+    "manual_override_terms": [],
+    "max_options": 3
+  },
+  "blood": {
+    "category": "indication",
+    "question_template": "Which blood-related condition are you looking for?",
+    "options": ["Leukemia", "Malignant Lymphoma", "Multiple Myeloma", "Thrombosis", "Deep Vein Thrombosis"],
+    "manual_override_terms": ["blood pressure", "blood sugar", "blood glucose", "blood test", "blood draw", "blood specimen", "blood clot"],
+    "max_options": 5
+  },
+  "hematologic": {
+    "category": "indication",
+    "question_template": "Which {trigger} condition are you looking for?",
+    "options": ["Leukemia", "Malignant Lymphoma", "Multiple Myeloma", "Thrombosis", "Deep Vein Thrombosis"],
+    "manual_override_terms": [],
+    "max_options": 5
+  },
+  "hematology": {
+    "category": "indication",
+    "question_template": "Which {trigger} condition are you looking for?",
+    "options": ["Leukemia", "Malignant Lymphoma", "Multiple Myeloma", "Thrombosis", "Deep Vein Thrombosis"],
+    "manual_override_terms": [],
+    "max_options": 5
+  },
+  "lymphatic": {
+    "category": "indication",
+    "question_template": "Which {trigger} condition are you looking for?",
+    "options": ["Malignant Lymphoma", "Non-Hodgkin Lymphoma", "Lymph Node Procedure"],
+    "manual_override_terms": [],
+    "max_options": 3
+  },
+  "lymphoid": {
+    "category": "indication",
+    "question_template": "Which {trigger} condition are you looking for?",
+    "options": ["Malignant Lymphoma", "Non-Hodgkin Lymphoma", "Lymph Node Procedure"],
+    "manual_override_terms": [],
+    "max_options": 3
+  },
+  "vascular": {
+    "category": "indication",
+    "question_template": "Which {trigger} condition are you looking for?",
+    "options": ["Hypertension", "Coronary Artery Disease", "Peripheral Arterial Disease", "Deep Vein Thrombosis", "Thrombosis"],
+    "manual_override_terms": [],
+    "max_options": 5
+  },
+  "vessel": {
+    "category": "indication",
+    "question_template": "Which blood-{trigger} condition are you looking for?",
+    "options": ["Hypertension", "Coronary Artery Disease", "Peripheral Arterial Disease", "Deep Vein Thrombosis", "Thrombosis"],
+    "manual_override_terms": [],
+    "max_options": 5
+  },
+  "circulatory": {
+    "category": "indication",
+    "question_template": "Which {trigger} condition are you looking for?",
+    "options": ["Hypertension", "Coronary Artery Disease", "Heart Disease", "Peripheral Arterial Disease", "Thrombosis"],
+    "manual_override_terms": [],
+    "max_options": 5
+  },
+  "head and neck": {
+    "category": "indication",
+    "question_template": "Which {trigger} condition are you looking for?",
+    "options": ["Malignant Neoplasm of Brain", "Thyroid Cancer", "Malignant Neoplasm of Esophagus"],
+    "manual_override_terms": [],
+    "max_options": 3
+  },
+  "thoracic": {
+    "category": "indication",
+    "question_template": "Which {trigger} condition are you looking for?",
+    "options": ["Heart Disease", "Lung Disorder", "Coronary Artery Disease", "Pulmonary Embolism"],
+    "manual_override_terms": [],
+    "max_options": 4
+  },
+  "abdominal": {
+    "category": "indication",
+    "question_template": "Which {trigger} condition are you looking for?",
+    "options": ["Malignant Neoplasm of Colon", "Malignant Neoplasm of Stomach", "Malignant Neoplasm of Pancreas", "Hepatocellular Carcinoma"],
+    "manual_override_terms": [],
+    "max_options": 4
+  },
+  "abdomen": {
+    "category": "indication",
+    "question_template": "Which abdominal condition are you looking for?",
+    "options": ["Malignant Neoplasm of Colon", "Malignant Neoplasm of Stomach", "Malignant Neoplasm of Pancreas", "Hepatocellular Carcinoma"],
+    "manual_override_terms": [],
+    "max_options": 4
+  },
+  "extremity": {
+    "category": "indication",
+    "question_template": "Which {trigger} condition are you looking for?",
+    "options": ["Deep Vein Thrombosis", "Peripheral Arterial Disease", "Thrombosis"],
+    "manual_override_terms": [],
+    "max_options": 3
+  },
+  "extremities": {
+    "category": "indication",
+    "question_template": "Which extremity condition are you looking for?",
+    "options": ["Deep Vein Thrombosis", "Peripheral Arterial Disease", "Thrombosis"],
+    "manual_override_terms": [],
+    "max_options": 3
+  },
+  "limb": {
+    "category": "indication",
+    "question_template": "Which {trigger} condition are you looking for?",
+    "options": ["Deep Vein Thrombosis", "Peripheral Arterial Disease", "Thrombosis"],
+    "manual_override_terms": [],
+    "max_options": 3
+  },
+  "limbs": {
+    "category": "indication",
+    "question_template": "Which limb condition are you looking for?",
+    "options": ["Deep Vein Thrombosis", "Peripheral Arterial Disease", "Thrombosis"],
+    "manual_override_terms": [],
+    "max_options": 3
   }
 }
