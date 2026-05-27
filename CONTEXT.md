@@ -124,3 +124,13 @@ The system uses a **multi-turn pipeline** with a deterministic sufficiency gate 
 See `README.md` for a high-level overview. Project root contains `api.py` (FastAPI), `app.py` (Streamlit), `src/` (core logic), `tests/` (pytest suite), and `qa_testing/` (QA agent).
 
 *For detailed history and past changes, see `HISTORY.md`.*
+
+---
+
+## pgvector_cascade Strategy (NEW, optional)
+- PostgreSQL + pgvector backend for SNOMED matching at 80k-150k concept scale
+- Schema: `clinical_nlp` (isolated). Migration: `db/migrations/001_create_snomed_schema.sql`
+- Build: `python scripts/build_snomed_index.py` (see `docs/DATA_SOURCES.md`)
+- Deployment note: see how-to block below.
+
+> **Parent monorepo step (manual):** In `siteid-app/docker-compose.yml`, change the `db.image` from `postgres:16` to `pgvector/pgvector:pg16`. This is a one-line change; no data migration needed since pgvector/pgvector:pg16 is a drop-in replacement that adds the vector extension. After changing, run `docker compose up -d --force-recreate db` from the monorepo root.
