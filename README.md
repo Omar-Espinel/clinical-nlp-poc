@@ -11,94 +11,221 @@ pinned: false
 
 # Clinical Research NLP
 
-A natural language processing tool for clinical researchers to extract structured information from free-text queries about clinical trials. Given a plain-English query, the system identifies SNOMED CT medical concepts with confidence scores and extracts structured filters including investigator name, site name, city, state, and study phase.
+A natural language processing system for clinical researchers. Takes free-text
+queries about clinical trials and returns structured SNOMED CT concepts plus
+filters (investigator, site, city, state, phase) — or asks a clarification
+question when the query is ambiguous.
 
-The system uses a Groq-powered LLM (llama-3.1-8b-instant) to parse natural language, then validates and enriches extracted terms through a 4-step SNOMED matching cascade: exact match, synonym/alias lookup, fuzzy matching via rapidfuzz, and semantic vector search via ChromaDB with sentence-transformers embeddings. Geography is normalized against a curated US + Canada city/state/region database. Queries are pre-screened by a multi-pattern security layer (~70 regex patterns) that blocks injection attacks, harmful content, and prompt manipulation before any LLM call.
+The system supports multi-turn conversations: if a query is ambiguous (e.g.
+bare "cancer"), it asks which type before searching. Up to 3 clarification
+turns per session.
 
-## Example Queries to Try
+---
 
-- `Phase 3 T2DM trials in NYC`
+## Interfaces
+
+| Interface | File | Purpose |
+|---|---|---|
+| REST API | `api.py` | Primary — for application consumers |
+| Streamlit UI | `app.py` | Secondary — for direct human use |
+
+---
+
+## Example Queries
+
+- `Phase 3 type 2 diabetes trials in NYC`
 - `Dr. Smith breast cancer research at Mayo Clinic`
 - `NSCLC immunotherapy Phase 2 in California`
 - `Alzheimer's disease studies in the Bay Area`
 - `CHF trials excluding diabetes in Boston`
-- `Dr. Williams atrial fibrillation research at Johns Hopkins in Baltimore`
+- `Dr. Williams atrial fibrillation research at Johns Hopkins`
 - `Multiple myeloma Phase 1/2 studies in Toronto`
 
-## Setup — Running Locally
+---
 
-**Step 1:** Clone or download the project files
+## Quick Start — API
 
-**Step 2:** Install dependencies
-```bash
+**1. Install**
+
 pip install -r requirements.txt
-```
 
-**Step 3:** Copy the environment template
-```bash
+
+**2. Configure**
 cp .env.example .env
-```
 
-**Step 4:** Add your Groq API key to `.env`
-```
-GROQ_API_KEY=your_key_here
-```
+Edit .env: add GROQ_API_KEY and API_KEY
 
-**Step 5:** Start the app
-```bash
+**3. Run**
+
+uvicorn api:app --port 8000
+
+
+**4. Test**
+
+curl http://localhost:8000/health/ready
+
+curl -X POST http://localhost:8000/v1/query
+-H "Content-Type: application/json"
+-H "X-API-Key: your_api_key"
+-d "{"query": "Phase 3 diabetes trials in Boston"}"
+
+
+Interactive API docs: http://localhost:8000/docs
+
+---
+
+## Quick Start — Streamlit UI
+
 streamlit run app.py
-```
 
-**Step 6:** Open [http://localhost:8501](http://localhost:8501)
 
-> **Note:** First load takes 30–60 seconds while sentence-transformers downloads and loads the all-MiniLM-L6-v2 model (~90 MB).
+Opens at http://localhost:8501
 
-## Setup — HuggingFace Spaces
+---
 
-1. Create an account at [huggingface.co](https://huggingface.co)
-2. Go to **Spaces** → **New Space** → choose **Streamlit** as the SDK
-3. Upload all project files
-4. Go to **Settings → Secrets** and add: `GROQ_API_KEY = your_key_here`
-5. The Space auto-builds and deploys in 5–10 minutes
-6. Share the URL with anyone — no login required for viewers
+## Quick Start — Docker
 
-## Getting a Free Groq API Key
+docker build -t clinical-nlp-api .
 
-1. Go to [console.groq.com](https://console.groq.com)
-2. Sign up for a free account
-3. Navigate to **API Keys** and click **Create API Key**
-4. Copy the key and add it to `.env` or HuggingFace Secrets
+docker run -p 8000:8000
+-e GROQ_API_KEY=your_key_here
+-e API_KEY=your_internal_key_here
+clinical-nlp-api
 
-Free tier: up to 30 requests/minute, 500/day.
+
+---
+
+## Database Setup (Optional, for pgvector_cascade strategy)
+
+**1. Apply migration**
+
+psql -h localhost -U postgres -d siteid -f db/migrations/001_create_snomed_schema.sql
+
+**2. Download Athena SNOMED data**
+
+Visit https://athena.ohdsi.org and extract to `data/athena/`
+
+**3. Build index**
+
+python scripts/build_snomed_index.py
+
+**4. Run with pgvector_cascade**
+
+export SNOMED_SEARCH_STRATEGY=pgvector_cascade
+uvicorn api:app --port 8000
+
+See `docs/DATA_SOURCES.md` for full setup details.
+
+---
+
+## Output Format
+
+Every API response is one of two types, distinguished by the `type` field.
+
+**Search result** (`type: "search"`):
+
+{
+"result": {
+"type": "search",
+"snomed_terms": [
+{
+"code": "44054006",
+"display": "type 2 diabetes mellitus",
+"confidence": 0.99,
+"match_type": "exact"
+}
+],
+"filters": {
+"city": {"value": "Boston", "confidence": 0.99},
+"phase": {"value": "Phase 3", "confidence": 0.99},
+"state": {"values": ["Massachusetts"], "confidence": 0.99, "is_region": false}
+}
+},
+"session_id": "uuid4-here",
+"processing_time_ms": 843
+}
+
+
+**Clarification request** (`type: "clarification"`):
+{
+"result": {
+"type": "clarification",
+"question": "Which type of cancer are you looking for?",
+"options": ["Lung Cancer", "Breast Cancer", "Colorectal Cancer"],
+"turn_number": 1,
+"max_turns": 3
+},
+"session_id": "uuid4-here",
+"processing_time_ms": 12
+}
+
+
+To continue a clarification turn, pass the same `session_id` with your next query.
+
+---
 
 ## Architecture
-
-```
-app.py (Streamlit UI)
-  └── src/pipeline.py (NLPPipeline)
-        ├── src/preprocessor.py   — input sanitization, injection detection & harmful content blocking (~70 patterns)
-        ├── src/extractor.py      — Groq LLM term + filter extraction
-        ├── src/snomed_resolver.py — 4-step SNOMED matching cascade
-        │     ├── exact match (preferred_term lookup)
-        │     ├── synonym/alias match (alias dict + synonym index)
-        │     ├── fuzzy match (rapidfuzz token_sort_ratio ≥ 88)
-        │     └── semantic match (ChromaDB + all-MiniLM-L6-v2 ≥ 0.82)
-        ├── src/geo_normalizer.py — city/state normalization (200+ entries)
-        └── src/assembler.py      — Pydantic v2 output assembly
+REST API (api.py — FastAPI + Uvicorn)
+Streamlit UI (app.py)
+└── src/pipeline.py — NLPPipeline.run_with_session()
+├── src/preprocessor.py — ~77 security/injection patterns
+├── src/sufficiency_gate.py — ambiguity detection (no LLM cost)
+├── src/filter_extractor.py — Groq LLM filter extraction
+├── src/snomed_search/ — pluggable SNOMED strategies
+│ ├── hybrid_cascade.py — exact → synonym → fuzzy → semantic
+│ ├── aho_corasick.py
+│ └── ngram_lookup.py
+├── src/snomed_search/negation.py — NegEx negation detection
+├── src/conversation.py — multi-turn session state
+├── src/normalizers/geo.py — city/state/region normalization
+└── src/assembler.py — Pydantic V2 output assembly
 
 data/
-  ├── snomed_clinical_trials.csv  — curated SNOMED subset (100+ concepts)
-  └── geo_canonical.json          — US + Canada geo lookup (200+ cities)
+├── snomed_clinical_trials.csv — 116 SNOMED concepts with synonyms
+├── geo_canonical.json — 200+ cities, states, 59 regions
+├── ambiguous_terms.json — clarification triggers + options
+└── metric_filters.json — 12 Advarra metric fields
 
-tests/
-  ├── test_cases.json             — 20 structured test cases
-  └── run_tests.py                — test runner (exit 0 if ≥15 pass)
-```
+
+---
+
+## Getting a Groq API Key
+
+1. Go to https://console.groq.com
+2. Sign up for a free account
+3. Navigate to API Keys and click Create API Key
+4. Add to `.env` as `GROQ_API_KEY=your_key_here`
+
+Free tier: ~30 requests/minute, 500/day.
+
+---
+
+## Tech Stack
+
+| Package | Version | Purpose |
+|---|---|---|
+| fastapi | >=0.115.0 | REST API framework |
+| uvicorn | >=0.32.0 | ASGI server |
+| streamlit | 1.40.0 | Chat UI |
+| groq | 0.11.0 | LLM API client |
+| sentence-transformers | 3.2.1 | Semantic SNOMED search |
+| rapidfuzz | 3.10.0 | Fuzzy string matching |
+| pyahocorasick | >=2.0.0 | Metric field AC automaton |
+| pydantic | 2.9.2 | Output schema validation |
+| python-dotenv | 1.0.1 | .env loading |
+| python-multipart | >=0.0.9 | Required by FastAPI internals |
+
+---
 
 ## Running Tests
 
-```bash
-python tests/run_tests.py
-```
+pytest tests/test_sufficiency_gate.py tests/test_conversation.py
+tests/test_snomed_strategies.py tests/test_negation.py
+tests/test_llm_provider.py tests/test_ambiguity_coverage.py
+tests/test_metric_filters.py
 
-Requires `GROQ_API_KEY` in `.env`. Exit code `0` = 15 or more tests passed.
+python tests/batch_eval.py --limit 10
+
+python qa_testing/test_agent.py --limit 20
+
+Full deployment instructions: see DEPLOYMENT.md

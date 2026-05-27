@@ -20,6 +20,12 @@ try:
 except ImportError:
     pass  # pyahocorasick unavailable; aho_corasick won't be selectable
 
+try:
+    from src.snomed_search.pgvector_cascade import PgVectorCascadeStrategy
+    STRATEGY_REGISTRY["pgvector_cascade"] = PgVectorCascadeStrategy
+except ImportError:
+    pass  # psycopg2 and pgvector unavailable; pgvector_cascade won't be selectable
+
 DEFAULT_STRATEGY = "hybrid_cascade"
 
 DEFAULT_DICT_PATH = str(

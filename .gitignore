@@ -34,3 +34,5 @@ gen_flow_diagram.py
 modified-proposal.md
 README response.md
 response-branch-spec.md
+tests/results/
+data/athena/

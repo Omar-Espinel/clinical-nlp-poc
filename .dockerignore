@@ -1,0 +1,10 @@
+.env
+.git
+__pycache__
+*.pyc
+*.pyo
+tests/
+qa_testing/
+*.md
+*.png
+app.py
