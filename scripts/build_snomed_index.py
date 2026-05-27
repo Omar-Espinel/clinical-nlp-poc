@@ -254,7 +254,11 @@ def _connect(db_url: str) -> psycopg2.extensions.connection:
 
 
 def _idempotency_check(conn: psycopg2.extensions.connection, args: argparse.Namespace) -> None:
-    """If table has data and not --force/--test, prompt; TRUNCATE on confirm."""
+    """If table has data and not --force/--test/--resume, prompt; TRUNCATE on confirm."""
+    if args.resume:
+        log.info("Resume mode: skipping truncation check.")
+        return
+
     with conn.cursor() as cur:
         cur.execute("SELECT COUNT(*) FROM clinical_nlp.concepts")
         row_count = cur.fetchone()[0]
