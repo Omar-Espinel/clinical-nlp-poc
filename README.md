@@ -95,6 +95,29 @@ clinical-nlp-api
 
 ---
 
+## Database Setup (Optional, for pgvector_cascade strategy)
+
+**1. Apply migration**
+
+psql -h localhost -U postgres -d siteid -f db/migrations/001_create_snomed_schema.sql
+
+**2. Download Athena SNOMED data**
+
+Visit https://athena.ohdsi.org and extract to `data/athena/`
+
+**3. Build index**
+
+python scripts/build_snomed_index.py
+
+**4. Run with pgvector_cascade**
+
+export SNOMED_SEARCH_STRATEGY=pgvector_cascade
+uvicorn api:app --port 8000
+
+See `docs/DATA_SOURCES.md` for full setup details.
+
+---
+
 ## Output Format
 
 Every API response is one of two types, distinguished by the `type` field.
