@@ -71,17 +71,21 @@ class PgVectorCascadeStrategy:
         # Load sentence transformer model (eager, per Protocol contract)
         self._model: SentenceTransformer = SentenceTransformer("all-MiniLM-L6-v2")
 
-        # Configure FHIR fallback chain (requires key of at least 16 chars)
+        # Configure FHIR fallback chain.
+        # OLS4 requires no key — always instantiate so OLS4 is always available.
+        # BioPortalClient self-guards: returns None immediately when key is absent
+        # or shorter than 16 chars, so passing an empty string is safe.
+        self._fallback: SNOMEDFallbackChain = SNOMEDFallbackChain(
+            fallback_api_key or ""
+        )
+        log.info("OLS4 fallback enabled (no key required)")
         if fallback_api_key and len(fallback_api_key) >= 16:
-            self._fallback: Optional[SNOMEDFallbackChain] = SNOMEDFallbackChain(
-                fallback_api_key
-            )
+            log.info("BioPortal fallback enabled")
         else:
             log.warning(
-                "BIOPORTAL_API_KEY absent or shorter than 16 chars — "
-                "API fallback disabled."
+                "BioPortal fallback disabled — "
+                "BIOPORTAL_API_KEY missing or shorter than 16 chars"
             )
-            self._fallback = None
 
     # ------------------------------------------------------------------
     # Protocol interface
@@ -203,10 +207,6 @@ class PgVectorCascadeStrategy:
                     len(results),
                     (time.monotonic() - t0) * 1000,
                 )
-                return self._deduplicate(results)
-
-            # If no fallback configured → return what we have
-            if self._fallback is None:
                 return self._deduplicate(results)
 
         except psycopg2.OperationalError as e:

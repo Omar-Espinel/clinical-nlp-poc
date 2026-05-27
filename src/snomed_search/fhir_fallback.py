@@ -135,7 +135,14 @@ class OLS4Client:
             return None
 
     def _in_valid_hierarchy(self, doc: dict) -> bool:
-        hierarchy = doc.get("hierarchy", [])
+        # OLS4 /api/search no longer returns a "hierarchy" field in docs.
+        # When the field is absent we trust the ontology=snomed filter already
+        # applied server-side and allow the result through.  When the field IS
+        # present (future OLS4 versions or alternate deployments) we still
+        # validate against the known clinical-trial hierarchy roots.
+        hierarchy = doc.get("hierarchy")
+        if hierarchy is None:
+            return True
         return any(h in VALID_SNOMED_HIERARCHIES for h in hierarchy)
 
 
