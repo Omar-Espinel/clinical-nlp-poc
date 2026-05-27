@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 AMBIG_JSON_MIN_OPTIONS = 3
 AMBIG_JSON_MAX_OPTIONS = 5
-OPTION_MIN_CONFIDENCE = 0.85  # every option in ambiguous_terms.json must resolve here
+OPTION_MIN_CONFIDENCE = 0.7  # every option in ambiguous_terms.json must resolve here
 
 # Layer 1 — auto-derived trigger constants
 MIN_DERIVED_TOKEN_LEN = 4

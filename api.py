@@ -1,3 +1,30 @@
+"""Clinical NLP FastAPI service.
+
+Routes
+------
+    GET    /health/live              Liveness probe. No auth, no pipeline dependency.
+    GET    /health/ready             Readiness probe. No auth; 503 until pipeline is initialized.
+    POST   /v1/query                 Main NLP query endpoint. Auth required. Accepts
+                                      {query, session_id?}; returns {result, session_id,
+                                      processing_time_ms} where result is NLPOutput |
+                                      ClarificationOutput (discriminated on `type`).
+    DELETE /v1/session/{session_id}  Clear a conversation session. Auth required.
+
+Auth
+----
+    All routes except /health/* require the `X-API-Key` header to match the API_KEY env
+    var (middleware at require_api_key). If API_KEY is unset, the check is skipped — set
+    it before exposing the service.
+
+SNOMED strategy selection
+-------------------------
+    The SNOMED search strategy is bound at server startup, not per-request. Selection
+    priority: explicit SNOMED_SEARCH_STRATEGY env var > DEFAULT_STRATEGY in
+    src/snomed_search/registry.py (currently "pgvector_cascade"). When the default
+    is implicit (no env override), any init or health-check failure auto-falls back
+    to "hybrid_cascade"; with an explicit override, failures propagate.
+"""
+
 import os
 import re
 import time

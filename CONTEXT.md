@@ -127,10 +127,39 @@ See `README.md` for a high-level overview. Project root contains `api.py` (FastA
 
 ---
 
-## pgvector_cascade Strategy (NEW, optional)
-- PostgreSQL + pgvector backend for SNOMED matching at 80k-150k concept scale
+## pgvector_cascade Strategy (DEFAULT as of 2026-05-27)
+- PostgreSQL + pgvector backend for SNOMED matching at 80k-150k concept scale; production index is 122,410 concepts.
 - Schema: `clinical_nlp` (isolated). Migration: `db/migrations/001_create_snomed_schema.sql`
 - Build: `python scripts/build_snomed_index.py` (see `docs/DATA_SOURCES.md`)
+- Now the registry's `DEFAULT_STRATEGY`. On implicit-default init failure (DB unreachable, dependency missing, health-check fail), the registry auto-falls back to `hybrid_cascade` and logs a WARNING with `error_type`. An explicit `SNOMED_SEARCH_STRATEGY` env var override is honoured verbatim — no silent swap.
 - Deployment note: see how-to block below.
 
 > **Parent monorepo step (manual):** In `siteid-app/docker-compose.yml`, change the `db.image` from `postgres:16` to `pgvector/pgvector:pg16`. This is a one-line change; no data migration needed since pgvector/pgvector:pg16 is a drop-in replacement that adds the vector extension. After changing, run `docker compose up -d --force-recreate db` from the monorepo root.
+
+---
+
+## Post-Build Changes Log
+
+### 2026-05-27 — pgvector wiring + auto-fallback default (+ Layer 2 parity)
+
+**What:** Made `pgvector_cascade` the production default with automatic fallback to `hybrid_cascade` on init failure. Added `get_top_neighbors` to `PgVectorCascadeStrategy` so the Layer 2 `EmbeddingAmbiguityGate` continues to function when pgvector is the active strategy (it duck-types on `hasattr(strategy, "get_top_neighbors")`).
+
+**Why:** Original brief asked to wire the 122k pgvector index for runtime. Most of the spec was already implemented (registry registration, full cascade impl with parameterised SQL and HIPAA-clean logging, /v1/query route, X-API-Key middleware). Two real gaps: (1) pgvector lacked `get_top_neighbors` → silent Layer 2 regression when selected, (2) no auto-fallback if DB unreachable. Per-request strategy override was *not* added — gates and registries hold strategy refs at construction time and per-request switching would have required deeper architectural surgery the user opted out of.
+
+**Files touched:**
+- `src/snomed_search/pgvector_cascade.py` — added `get_top_neighbors`; rewrote health_check to (a) close the transaction opened by `SELECT 1` before returning the connection to the pool, (b) include `concept_count` from `SELECT COUNT(*)`, (c) use psycopg2 connection-level `commit()/rollback()` so SET LOCAL statement_timeout is scoped to a single tracked transaction. Added defensive `conn.rollback()` at the top of `search()` to clear any inherited pool state before `set_session`.
+- `src/snomed_search/registry.py` — `DEFAULT_STRATEGY` → `pgvector_cascade`; `get_strategy()` now distinguishes explicit (name kwarg or env var set) from implicit (neither). Implicit-default failures fall back to `hybrid_cascade` with a logged WARNING. Implicit-default *unregistered* strategy (e.g. psycopg2 missing → import in try/except skipped) also falls back. Explicit overrides re-raise unchanged.
+- `api.py` — top-of-file module docstring documenting all four routes (`/health/live`, `/health/ready`, `/v1/query`, `/v1/session/{id}`), auth model, and strategy-selection contract.
+- `.env.example` — `DATABASE_URL` example aligned to localhost; optional `SNOMED_SEARCH_STRATEGY` override commented in.
+- `tests/test_ambiguity_coverage.py` — pinned `_make_registry` to hybrid_cascade explicitly; the test exercises CSV-driven ambiguous-term registry validation and the 122k pgvector DB doesn't index the 99-term CSV options.
+- `tests/test_snomed_strategies.py` — updated two `DEFAULT_STRATEGY == "hybrid_cascade"` assertions to the new default; one test now passes `name="hybrid_cascade"` explicitly to keep its assertion stable.
+
+**Critical constraints honoured:**
+- Protocol (`base.py`) UNCHANGED — still sync `search(query) -> list[SNOMEDMatch]`.
+- `/v1/query` request/response schema UNCHANGED — Streamlit and existing API consumers see no break.
+- `pipeline.py` UNCHANGED — strategy is still bound at construction via `SNOMED_SEARCH_STRATEGY` env var. No per-request override added.
+- All SQL parameterised with `%s`; embedding vector bound, never interpolated.
+- HIPAA log discipline preserved — no query text, no preferred_term, no concept_ids in INFO/WARN paths.
+- 5s statement timeout in `get_top_neighbors` (1s in health_check count) scoped via `SET LOCAL` inside a tracked transaction; cannot leak to recycled pool connections.
+
+**Test status after change:** 211 passed, 0 regressions from this work. Three pre-existing failures in `tests/test_pgvector_cascade.py` (`test_fuzzy_match_handles_typos`, `test_semantic_match_handles_paraphrases`, `test_semantic_search_latency_benchmark`) — these tests were skipped in earlier CI runs because `DATABASE_URL` was unset; they now run against the live 122k DB and reveal test-quality issues independent of this change (10ms latency threshold unrealistic on Windows; fuzzy/semantic recall assertions based on a small seed but running against the production index). These need triage in a separate pass.

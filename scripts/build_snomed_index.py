@@ -68,17 +68,115 @@ EMBEDDING_DIM = 384
 OLS4_BASE_URL = "https://www.ebi.ac.uk/ols4/api/search"
 
 OLS4_QUERY_TERMS = [
-    {"term": "clinical finding", "domain": "Condition", "expected": 50000},
-    {"term": "procedure", "domain": "Procedure", "expected": 30000},
-    {"term": "pharmaceutical product", "domain": "Drug", "expected": 25000},
-    {"term": "measurement", "domain": "Measurement", "expected": 15000},
-    {"term": "device", "domain": "Device", "expected": 8000},
+    {"term": "malignant neoplasm", "domain": "Oncology", "expected": 1500},
+    {"term": "carcinoma", "domain": "Oncology", "expected": 1200},
+    {"term": "lymphoma", "domain": "Oncology", "expected": 800},
+    {"term": "leukemia", "domain": "Oncology", "expected": 600},
+    {"term": "sarcoma", "domain": "Oncology", "expected": 500},
+    {"term": "melanoma", "domain": "Oncology", "expected": 400},
+    {"term": "heart failure", "domain": "Cardiovascular", "expected": 1200},
+    {"term": "hypertension", "domain": "Cardiovascular", "expected": 1000},
+    {"term": "myocardial infarction", "domain": "Cardiovascular", "expected": 900},
+    {"term": "coronary artery disease", "domain": "Cardiovascular", "expected": 850},
+    {"term": "arrhythmia", "domain": "Cardiovascular", "expected": 750},
+    {"term": "stroke", "domain": "Cardiovascular", "expected": 700},
+    {"term": "diabetes mellitus", "domain": "Metabolic", "expected": 1100},
+    {"term": "obesity", "domain": "Metabolic", "expected": 600},
+    {"term": "thyroid disorder", "domain": "Metabolic", "expected": 500},
+    {"term": "metabolic syndrome", "domain": "Metabolic", "expected": 400},
+    {"term": "alzheimer", "domain": "Neurological", "expected": 800},
+    {"term": "parkinson", "domain": "Neurological", "expected": 700},
+    {"term": "epilepsy", "domain": "Neurological", "expected": 650},
+    {"term": "multiple sclerosis", "domain": "Neurological", "expected": 600},
+    {"term": "dementia", "domain": "Neurological", "expected": 550},
+    {"term": "neuropathy", "domain": "Neurological", "expected": 500},
+    {"term": "asthma", "domain": "Respiratory", "expected": 800},
+    {"term": "chronic obstructive pulmonary", "domain": "Respiratory", "expected": 700},
+    {"term": "pneumonia", "domain": "Respiratory", "expected": 650},
+    {"term": "pulmonary fibrosis", "domain": "Respiratory", "expected": 500},
+    {"term": "sepsis", "domain": "Infectious", "expected": 700},
+    {"term": "HIV", "domain": "Infectious", "expected": 650},
+    {"term": "hepatitis", "domain": "Infectious", "expected": 600},
+    {"term": "tuberculosis", "domain": "Infectious", "expected": 550},
+    {"term": "bacterial infection", "domain": "Infectious", "expected": 500},
+    {"term": "rheumatoid arthritis", "domain": "Musculoskeletal", "expected": 800},
+    {"term": "osteoporosis", "domain": "Musculoskeletal", "expected": 700},
+    {"term": "osteoarthritis", "domain": "Musculoskeletal", "expected": 650},
+    {"term": "lupus", "domain": "Musculoskeletal", "expected": 500},
+    {"term": "crohn disease", "domain": "Gastrointestinal", "expected": 700},
+    {"term": "ulcerative colitis", "domain": "Gastrointestinal", "expected": 650},
+    {"term": "liver disease", "domain": "Gastrointestinal", "expected": 600},
+    {"term": "inflammatory bowel", "domain": "Gastrointestinal", "expected": 550},
+    {"term": "chronic kidney disease", "domain": "Renal", "expected": 750},
+    {"term": "renal failure", "domain": "Renal", "expected": 700},
+    {"term": "glomerulonephritis", "domain": "Renal", "expected": 500},
+    {"term": "depression", "domain": "Mental Health", "expected": 800},
+    {"term": "anxiety disorder", "domain": "Mental Health", "expected": 700},
+    {"term": "schizophrenia", "domain": "Mental Health", "expected": 600},
+    {"term": "bipolar disorder", "domain": "Mental Health", "expected": 550},
+    {"term": "autoimmune disorder", "domain": "Autoimmune", "expected": 800},
+    {"term": "vasculitis", "domain": "Autoimmune", "expected": 600},
+    {"term": "sjogren", "domain": "Autoimmune", "expected": 500},
+    {"term": "psoriasis", "domain": "Autoimmune", "expected": 450},
+    {"term": "biopsy", "domain": "Procedures", "expected": 700},
+    {"term": "chemotherapy", "domain": "Procedures", "expected": 650},
+    {"term": "radiation therapy", "domain": "Procedures", "expected": 600},
+    {"term": "immunotherapy", "domain": "Procedures", "expected": 550},
+    {"term": "transplantation", "domain": "Procedures", "expected": 500},
+    {"term": "surgical procedure", "domain": "Procedures", "expected": 1000},
+    {"term": "antineoplastic", "domain": "Drugs", "expected": 800},
+    {"term": "immunosuppressant", "domain": "Drugs", "expected": 700},
+    {"term": "antibiotic", "domain": "Drugs", "expected": 900},
+    {"term": "monoclonal antibody", "domain": "Drugs", "expected": 650},
+    {"term": "antiviral", "domain": "Drugs", "expected": 600},
+    {"term": "blood pressure", "domain": "Measurements", "expected": 600},
+    {"term": "tumor marker", "domain": "Measurements", "expected": 550},
+    {"term": "biomarker", "domain": "Measurements", "expected": 500},
+    {"term": "vital signs", "domain": "Measurements", "expected": 450},
+    {"term": "laboratory finding", "domain": "Measurements", "expected": 700},
+    {"term": "adverse event", "domain": "Trial terms", "expected": 800},
+    {"term": "disease progression", "domain": "Trial terms", "expected": 700},
+    {"term": "treatment response", "domain": "Trial terms", "expected": 650},
+    {"term": "remission", "domain": "Trial terms", "expected": 550},
+    {"term": "recurrence", "domain": "Trial terms", "expected": 500},
+    {"term": "disorder", "domain": "Trial terms", "expected": 400},
 ]
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _fetch_with_retry(url: str, max_retries: int = 5) -> dict | None:
+    """Fetch URL with exponential backoff for 5xx errors and timeouts."""
+    for attempt in range(max_retries):
+        try:
+            # Respect OLS4 10 req/s limit
+            time.sleep(0.1)
+            resp = requests.get(url, timeout=30)
+
+            if resp.status_code >= 500:
+                wait = 2 ** attempt
+                log.warning(
+                    "OLS4 server error %d (attempt %d/%d). Waiting %ds...",
+                    resp.status_code, attempt + 1, max_retries, wait
+                )
+                time.sleep(wait)
+                continue
+
+            resp.raise_for_status()
+            return resp.json()
+
+        except (requests.exceptions.RequestException, requests.exceptions.Timeout) as exc:
+            wait = 2 ** attempt
+            log.warning(
+                "OLS4 connection error %s (attempt %d/%d). Waiting %ds...",
+                type(exc).__name__, attempt + 1, max_retries, wait
+            )
+            time.sleep(wait)
+
+    return None
+
 
 def _mask_url(url: str) -> str:
     """Mask password in a database URL before logging."""
@@ -156,7 +254,11 @@ def _connect(db_url: str) -> psycopg2.extensions.connection:
 
 
 def _idempotency_check(conn: psycopg2.extensions.connection, args: argparse.Namespace) -> None:
-    """If table has data and not --force/--test, prompt; TRUNCATE on confirm."""
+    """If table has data and not --force/--test/--resume, prompt; TRUNCATE on confirm."""
+    if args.resume:
+        log.info("Resume mode: skipping truncation check.")
+        return
+
     with conn.cursor() as cur:
         cur.execute("SELECT COUNT(*) FROM clinical_nlp.concepts")
         row_count = cur.fetchone()[0]
@@ -345,7 +447,7 @@ def _fetch_ols4(
             continue
 
         # In test mode fetch 100 per term (500 total across 5 terms)
-        max_rows = 100 if args.test else None
+        max_rows = 100 if args.test else 5000
 
         start_offset = term_progress.get("last_offset", 0)
         term_inserted = term_progress.get("inserted", 0)
@@ -367,20 +469,16 @@ def _fetch_ols4(
                 f"?ontology=snomed&q={requests.utils.quote(term)}"
                 f"&rows={rows_per_page}&start={offset}"
             )
-            try:
-                time.sleep(0.1)  # 10 req/s rate limit
-                resp = requests.get(url, timeout=30)
-                resp.raise_for_status()
-                data = resp.json()
-                docs = data.get("response", {}).get("docs", [])
-            except Exception as exc:
+            data = _fetch_with_retry(url)
+            if data is None:
                 log.warning(
-                    "OLS4 fetch failed for term '%s' at offset=%d (%s) — stopping this term.",
+                    "OLS4 fetch failed for term '%s' at offset=%d after retries — skipping this term.",
                     term,
                     offset,
-                    type(exc).__name__,
                 )
                 break
+
+            docs = data.get("response", {}).get("docs", [])
 
             if not docs:
                 break

@@ -66,10 +66,17 @@ def _make_mock_strategy(has_neighbors: bool = False, neighbor_returns: Optional[
 
 
 def _make_registry(strict: bool = False) -> "AmbiguousTermsRegistry":
-    """Build a real AmbiguousTermsRegistry using the project data files."""
+    """Build a real AmbiguousTermsRegistry using the project data files.
+
+    Explicitly pins hybrid_cascade because this test validates the CSV-driven
+    ambiguous-term resolution flow. The production default (pgvector_cascade)
+    runs against a 122k SNOMED index that does not contain the 99-term CSV
+    options used by the registry validation logic, so it cannot resolve them at
+    the required 0.85 confidence threshold.
+    """
     from src.snomed_search.registry import get_strategy
     from src.sufficiency_gate import AmbiguousTermsRegistry
-    strategy = get_strategy(dictionary_path=SNOMED_CSV)
+    strategy = get_strategy(name="hybrid_cascade", dictionary_path=SNOMED_CSV)
     return AmbiguousTermsRegistry(
         path=AMBIG_JSON,
         snomed_strategy=strategy,
