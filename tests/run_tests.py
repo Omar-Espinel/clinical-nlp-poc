@@ -23,24 +23,19 @@ from rapidfuzz import fuzz
 
 from src.pipeline import NLPPipeline
 from src.preprocessor import PreprocessorError
-from src.extractor import ExtractionError
+from src.exceptions import ExtractionError
 
 PASS_THRESHOLD = 15
 FILTER_FUZZY_THRESHOLD = 88
 
 
 def run_tests() -> int:
-    api_key = os.getenv("GROQ_API_KEY", "")
-    if not api_key:
-        print("ERROR: GROQ_API_KEY not set. Add it to .env or environment.")
-        return 1
-
     test_file = Path(__file__).parent / "test_cases.json"
     with open(test_file, "r", encoding="utf-8") as fh:
         test_cases = json.load(fh)
 
     print(f"Loading NLPPipeline (this may take 30-60s on first run)...")
-    pipeline = NLPPipeline(groq_api_key=api_key)
+    pipeline = NLPPipeline()
     print("Pipeline loaded.\n")
 
     passed = 0

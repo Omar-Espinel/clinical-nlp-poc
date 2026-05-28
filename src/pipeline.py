@@ -11,10 +11,21 @@ from typing import Optional, Union
 
 from src.assembler import ResponseAssembler, ClarificationOutput, NLPOutput
 from src.conversation import ConversationSession, Turn
-from src.exceptions import PipelineError, LLMProviderError
-from src.filter_extractor import FilterExtractor, ExtractedFilters, FilterField, StateFilter
-from src.llm_provider.base import LLMProvider
-from src.llm_provider.registry import get_provider
+from src.exceptions import PipelineError
+from src.filter_extractor import (
+    DeterministicFilterExtractor,
+    ExtractionResult,
+    ExtractedFilters,
+    FilterField,
+    StateFilter,
+)
+from src.extractors.preflight import PreflightMandatoryCheck
+from src.extractors.names import (
+    PERSON_PREFIXES,
+    PERSON_SUFFIXES,
+    CONTEXT_PERSON,
+    CONTEXT_SITE,
+)
 from src.normalizers.geo import GeoNormalizer
 from src.normalizers.metric import MetricIntentResolver, MetricMatch, MetricFilterOutput
 from src.preprocessor import Preprocessor, PreprocessorError
@@ -23,6 +34,7 @@ from src.snomed_search.negation import NegationAnnotator
 from src.snomed_search.registry import get_strategy
 from src.sufficiency_gate import (
     AmbiguousTermsRegistry,
+    AmbiguousEntry,
     EmbeddingAmbiguityGate,
     MetricAmbiguityGate,
     SufficiencyGate,
@@ -33,10 +45,11 @@ from src.sufficiency_gate import (
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).parent.parent
-DEFAULT_SNOMED_CSV          = str(PROJECT_ROOT / "data" / "snomed_clinical_trials.csv")
-DEFAULT_GEO_PATH            = str(PROJECT_ROOT / "data" / "geo_canonical.json")
-DEFAULT_AMBIG_PATH          = str(PROJECT_ROOT / "data" / "ambiguous_terms.json")
-DEFAULT_METRIC_FILTERS_PATH = str(PROJECT_ROOT / "data" / "metric_filters.json")
+DEFAULT_SNOMED_CSV               = str(PROJECT_ROOT / "data" / "snomed_clinical_trials.csv")
+DEFAULT_GEO_PATH                 = str(PROJECT_ROOT / "data" / "geo_canonical.json")
+DEFAULT_AMBIG_PATH               = str(PROJECT_ROOT / "data" / "ambiguous_terms.json")
+DEFAULT_METRIC_FILTERS_PATH      = str(PROJECT_ROOT / "data" / "metric_filters.json")
+DEFAULT_INSTITUTION_KEYWORDS_PATH = str(PROJECT_ROOT / "data" / "institution_keywords.json")
 
 PARALLEL_TIMEOUT_SECONDS = 15.0   # shared budget for BOTH futures combined (B2 fix)
 THREAD_POOL_MAX_WORKERS  = 2
@@ -50,6 +63,7 @@ LOG_PATH_POST_EXTRACTION_SAFETY    = "post_extraction_safety"
 LOG_PATH_SEARCH                    = "search"
 LOG_PATH_EMBEDDING_AMBIGUITY       = "embedding_ambiguity_clarification"
 LOG_PATH_METRIC_AMBIGUITY          = "metric_ambiguity_clarification"
+LOG_PATH_PREFLIGHT_REJECTION       = "preflight_rejection"
 
 
 # ---------------------------------------------------------------------------
@@ -91,7 +105,6 @@ class NLPPipeline:
 
     def __init__(
         self,
-        llm_provider: Optional[LLMProvider] = None,
         snomed_strategy: Optional[SNOMEDSearchStrategy] = None,
         ambiguous_terms_path: Optional[str] = None,
         snomed_csv_path: Optional[str] = None,
@@ -99,36 +112,25 @@ class NLPPipeline:
         strict_validation: Optional[bool] = None,
         metric_filters_path: Optional[str] = None,
         metric_strict_validation: Optional[bool] = None,
-        # Legacy positional kwarg accepted for backwards compat (tests/run_tests.py)
-        groq_api_key: Optional[str] = None,
+        institution_keywords_path: Optional[str] = None,
     ) -> None:
         """Init order is critical:
           1. SNOMED strategy first — AmbiguousTermsRegistry needs it for option validation.
-          2. LLM provider second — independent.
-          3. Registry third — depends on strategy.
-          4. Gate, extractor, geo, negation, preprocessor, assembler — order flexible.
-          4f. MetricIntentResolver and MetricAmbiguityGate after other components.
+          2. Ambiguous terms registry — depends on strategy.
+          3. Preflight + gate + extractor + geo + negation + preprocessor + assembler.
+          4. MetricIntentResolver and MetricAmbiguityGate after other components.
           5. ThreadPoolExecutor last — after all components ready.
         """
         _snomed_csv = snomed_csv_path or DEFAULT_SNOMED_CSV
+        _geo_path = geo_json_path or DEFAULT_GEO_PATH
+        _institution_kw_path = institution_keywords_path or DEFAULT_INSTITUTION_KEYWORDS_PATH
 
         # Step 1: SNOMED strategy
         self._snomed: SNOMEDSearchStrategy = (
             snomed_strategy or get_strategy(dictionary_path=_snomed_csv)
         )
 
-        # Step 2: LLM provider — accept legacy groq_api_key kwarg
-        if llm_provider is not None:
-            self._llm: LLMProvider = llm_provider
-        else:
-            # Resolve API key: explicit kwarg → GROQ_API_KEY env var → get_provider default
-            _api_key = groq_api_key or os.environ.get("GROQ_API_KEY")
-            if _api_key:
-                self._llm = get_provider(name="groq", api_key=_api_key)
-            else:
-                self._llm = get_provider()
-
-        # Step 3: Ambiguous terms registry
+        # Step 2: Ambiguous terms registry
         _strict: bool = (
             strict_validation
             if strict_validation is not None
@@ -141,16 +143,16 @@ class NLPPipeline:
             strict_validation=_strict,
         )
 
-        # Step 4: remaining components
+        # Step 3: remaining components
         self._gate           = SufficiencyGate(self._registry, snomed_csv_path=_snomed_csv)
-        self._geo            = GeoNormalizer(geo_json_path or DEFAULT_GEO_PATH)
+        self._geo            = GeoNormalizer(_geo_path)
         self._negation       = NegationAnnotator()
         self._preprocessor   = Preprocessor()
         self._assembler      = ResponseAssembler()
-        # Step 4e: Embedding ambiguity gate (Layer 2)
+        # Step 3e: Embedding ambiguity gate (Layer 2)
         self._embedding_gate = EmbeddingAmbiguityGate(self._snomed)
 
-        # Step 4f: Metric intent resolver and gate (§12c)
+        # Step 4: Metric intent resolver and gate (§12c)
         _metric_strict: bool = (
             metric_strict_validation
             if metric_strict_validation is not None
@@ -162,10 +164,48 @@ class NLPPipeline:
         )
         self._metric_gate = MetricAmbiguityGate(self._metric_resolver)
 
-        # FilterExtractor initialized after metric_resolver so we can pass known fields
-        self._extractor = FilterExtractor(
-            self._llm,
+        # Step 4b: Deterministic filter extractor (replaces LLM-based extractor)
+        self._extractor = DeterministicFilterExtractor(
             known_metric_fields=self._metric_resolver._known_metric_fields,
+            geo_normalizer=self._geo,
+            institution_keywords_path=_institution_kw_path,
+            geo_json_path=_geo_path,
+        )
+
+        # Step 4c: Preflight mandatory check
+        # FIX 1: build known_terms from CSV directly (strategy-agnostic) so the
+        # signal works regardless of whether the active SNOMED strategy exposes
+        # internal indexes (pgvector_cascade does not).
+        _known_terms = self._build_known_terms_from_csv(_snomed_csv)
+
+        # Multi-word geo phrases (anything with a space). Single-word geo keys
+        # are deliberately excluded so they remain ambiguous in Signal F.
+        with open(_geo_path, encoding="utf-8") as _gf:
+            _geo_data = json.load(_gf)
+        _geo_multiword_keys = frozenset(
+            k.lower()
+            for k in (
+                list(_geo_data.get("cities", {}).keys())
+                + list(_geo_data.get("regions", {}).keys())
+            )
+            if " " in k
+        )
+
+        # Institution keywords (primary + legal suffixes)
+        with open(_institution_kw_path, encoding="utf-8") as _ikf:
+            _ik_data = json.load(_ikf)
+        _institution_kw_set = frozenset(
+            (_ik_data.get("primary_keywords", []) or [])
+            + (_ik_data.get("legal_suffixes", []) or [])
+        )
+
+        self._preflight = PreflightMandatoryCheck(
+            known_terms=_known_terms,
+            person_prefixes=PERSON_PREFIXES,
+            person_suffixes=PERSON_SUFFIXES,
+            institution_keywords=_institution_kw_set,
+            context_signals=CONTEXT_PERSON | CONTEXT_SITE,
+            geo_multiword_keys=_geo_multiword_keys,
         )
 
         # Step 5: thread pool
@@ -175,12 +215,44 @@ class NLPPipeline:
         )
 
         logger.info(
-            "NLPPipeline initialized: strategy=%s provider=%s strict_validation=%s "
-            "metric_fields=%d",
-            self._snomed.name, self._llm.name, _strict,
+            "NLPPipeline initialized: strategy=%s filter=deterministic "
+            "strict_validation=%s metric_fields=%d known_terms=%d",
+            self._snomed.name, _strict,
             len(self._metric_resolver._entries),
+            len(_known_terms),
             # NOT logged: api keys, paths, any content
         )
+
+    @staticmethod
+    def _build_known_terms_from_csv(csv_path: str) -> frozenset[str]:
+        """FIX 1: build a strategy-agnostic SNOMED term set directly from the CSV.
+
+        Reads preferred_term + synonyms columns. Keeps terms of len >= 4 chars.
+        This is the source of truth for the preflight SNOMED signal, decoupled
+        from any specific SNOMED search strategy's internal indexes.
+        """
+        try:
+            import csv
+            terms: set[str] = set()
+            with open(csv_path, encoding="utf-8") as fh:
+                reader = csv.DictReader(fh)
+                for row in reader:
+                    preferred = (row.get("preferred_term") or "").strip().lower()
+                    if preferred:
+                        terms.add(preferred)
+                    syns_raw = (row.get("synonyms") or "").strip().lower()
+                    if syns_raw:
+                        for syn in syns_raw.split("|"):
+                            syn_clean = syn.strip()
+                            if syn_clean:
+                                terms.add(syn_clean)
+            return frozenset(t for t in terms if len(t) >= 4)
+        except Exception as exc:
+            logger.warning(
+                "_build_known_terms_from_csv: failed (%s) — preflight SNOMED signal disabled",
+                type(exc).__name__,
+            )
+            return frozenset()
 
     # -------------------------------------------------------------------------
     # Primary entry point
@@ -275,9 +347,9 @@ class NLPPipeline:
         Fields: ts, session_id, turn_index, clarification_count, path,
                 decision_reason, snomed_match_count, snomed_strategy,
                 filter_count, metric_match_count, metric_resolved_count,
-                llm_provider, processing_time_ms.
+                filter_strategy, processing_time_ms.
         NEVER logged: raw_query, canonical_query, user_input, filter values,
-                      SNOMED display strings, LLM response, triggered_by value,
+                      SNOMED display strings, triggered_by value,
                       option text, matched_text, original_text.
         """
         log_record = {
@@ -292,7 +364,7 @@ class NLPPipeline:
             "filter_count": filter_count,
             "metric_match_count": metric_match_count,
             "metric_resolved_count": metric_resolved_count,
-            "llm_provider": self._llm.name,
+            "filter_strategy": "deterministic",
             "processing_time_ms": int((time.perf_counter() - start) * 1000),
         }
         logger.info("turn_log %s", json.dumps(log_record))
@@ -321,7 +393,7 @@ class NLPPipeline:
         """
         log_path: str = "unknown"
 
-        # ── Step 3b: Metric intent resolution (deterministic, pre-LLM) ───────
+        # ── Step 3b: Metric intent resolution (deterministic) ────────────────
         if metric_matches is None:
             metric_matches = self._metric_resolver.resolve(canonical)
             logger.info(
@@ -330,10 +402,62 @@ class NLPPipeline:
                 # NOT logged: matched_text, canonical
             )
 
-        # ── Step 4: Parallel paths — filter LLM + algorithmic SNOMED ─────────
-        fut_filters = self._executor.submit(self._extractor.extract, canonical, metric_matches)
+        # ── Step 3c: Preflight mandatory check ───────────────────────────────
+        preflight_result = self._preflight.evaluate(canonical, session.session_id)
+        if not preflight_result.passed:
+            preflight_decision = SufficiencyDecision(
+                sufficient=False,
+                reason="missing_mandatory_term",
+                triggered_by=None,
+                matched_entry=AmbiguousEntry(
+                    trigger="__mandatory_term__",
+                    category="indication",
+                    question_template=(
+                        "Your search needs at least one of: a medical condition, "
+                        "investigator name, or research site. "
+                        "What would you like to search by?"
+                    ),
+                    options=[
+                        "Medical Condition",
+                        "Investigator Name",
+                        "Research Site",
+                        "Let me rephrase my query",
+                    ],
+                    override_terms=frozenset(),
+                    max_options=4,
+                ),
+            )
+            clarification = self._assembler.build_clarification(
+                preflight_decision, session, start
+            )
+            session.append_turn(Turn(
+                turn_index=len(session.turns),
+                user_input=user_text,
+                canonical_query=canonical,
+                decision=preflight_decision,
+                filters=None,
+                snomed_matches=[],
+                geo=None,
+                timestamp=time.time(),
+            ))
+            self._log_turn(
+                session, preflight_decision, LOG_PATH_PREFLIGHT_REJECTION, start,
+                snomed_count=0, filter_count=0,
+                metric_match_count=len(metric_matches),
+                metric_resolved_count=0,
+            )
+            return clarification
+
+        # ── Step 4: Parallel paths — deterministic filters + algorithmic SNOMED ─
+        fut_filters = self._executor.submit(
+            self._extractor.extract,
+            canonical,
+            metric_matches,
+            0,  # qualifying_snomed_count unknown pre-search; gate revalidates post
+        )
         fut_snomed  = self._executor.submit(self._snomed.search, canonical)
 
+        extraction_result: ExtractionResult
         filters: ExtractedFilters
         snomed_raw: list[SNOMEDMatch]
 
@@ -353,19 +477,11 @@ class NLPPipeline:
                 )
                 raise PipelineError("extraction_timeout")
 
-            filters    = fut_filters.result()
+            extraction_result = fut_filters.result()
+            filters    = extraction_result.filters
             snomed_raw = fut_snomed.result()
 
         except PipelineError:
-            raise
-        except LLMProviderError as exc:
-            fut_filters.cancel()
-            fut_snomed.cancel()
-            logger.error(
-                "run_with_session step=4 LLMProviderError provider=%s session_id=%s",
-                exc.provider_name, session.session_id,
-                # NOT logged: exc.original_error.message, any response content
-            )
             raise
         except Exception as exc:
             fut_filters.cancel()
@@ -438,7 +554,10 @@ class NLPPipeline:
 
         # ── Step 7: Post-extraction safety check ─────────────────────────────
         post_decision: SufficiencyDecision = self._gate.post_extraction_check(
-            snomed_matches, filters
+            snomed_matches,
+            filters,
+            ambiguous_names=extraction_result.ambiguous_names,
+            snomed_required_unmet=extraction_result.snomed_required_unmet,
         )
         if not post_decision.sufficient:
             log_path = LOG_PATH_POST_EXTRACTION_SAFETY

@@ -403,6 +403,8 @@ _KNOWN_REASONS: frozenset[str] = frozenset({
     "embedding_ambiguity",
     "legacy_bypass",
     "metric_without_value",
+    "missing_mandatory_term",
+    "name_ambiguity",
 })
 
 
@@ -808,43 +810,163 @@ class SufficiencyGate:
         self,
         snomed_matches: list[SNOMEDMatch],
         filters,
+        ambiguous_names: Optional[list] = None,
+        snomed_required_unmet: Optional[list[str]] = None,
     ) -> SufficiencyDecision:
         """Post-extraction safety check.
 
-        Fires when the algorithmic SNOMED search found zero high-confidence matches
-        but the LLM extracted at least one non-null filter field.
+        Three branches evaluated in priority order:
+          A. Name ambiguity (highest priority)
+          B. SNOMED-required metric unmet
+          C. No mandatory term (original behavior for existing callers)
 
-        This catches queries like "What's at Mayo?" — geographic/site interest with
-        no condition.
-
-        HIPAA: filter values and snomed display strings are NOT logged.
+        HIPAA: filter values, name strings, query text, option strings are NOT logged.
         """
-        high_conf_matches = [
-            m for m in snomed_matches if m.confidence >= 0.60 and not m.negated
-        ]
-        filter_count = _count_set_filters(filters)
-
-        if not high_conf_matches and _any_filter_set(filters):
+        # BRANCH A — Name ambiguity (highest priority)
+        if ambiguous_names:
+            entry = self._build_name_ambiguity_entry(ambiguous_names)
             logger.info(
-                "SufficiencyGate.post_extraction_check: sufficient=False "
-                "reason=filters_without_condition snomed_count=0 filter_count=%d",
-                filter_count,
-                # NOT logged: filter values, snomed display
+                "SufficiencyGate.post_extraction_check: branch=A sufficient=False "
+                "reason=name_ambiguity qualifying_count=0 has_inv=False has_site=False "
+                "ambiguous_count=%d snomed_unmet_count=0",
+                len(ambiguous_names),
+                # NOT logged: name strings, option strings, filter values
             )
             return SufficiencyDecision(
                 sufficient=False,
-                reason="filters_without_condition",
+                reason="name_ambiguity",
                 triggered_by=None,
-                matched_entry=self._default_condition_prompt,
+                matched_entry=entry,
             )
 
-        logger.info(
-            "SufficiencyGate.post_extraction_check: sufficient=True "
-            "reason=ok_post_extraction snomed_count=%d filter_count=%d",
-            len(high_conf_matches),
-            filter_count,
+        # BRANCH B — SNOMED-required metric unmet.
+        # NOTE: the assembler flags snomed_required fields conservatively (it sees
+        # qualifying_snomed_count=0 because extract() runs in parallel with the
+        # SNOMED search). Here we revalidate against the post-search results:
+        # if SNOMED was actually found, the requirement is satisfied and we
+        # intentionally fall through to BRANCH C (which returns ok_post_extraction
+        # via C1). Only clarify when SNOMED is genuinely missing.
+        if snomed_required_unmet:
+            qualifying = [m for m in snomed_matches if m.confidence >= 0.60 and not m.negated]
+            if not qualifying:
+                entry = AmbiguousEntry(
+                    trigger="__snomed_required__",
+                    category="indication",
+                    question_template="The metric you selected requires a medical condition. What condition are you searching for?",
+                    options=self._default_condition_prompt.options,
+                    override_terms=frozenset(),
+                    max_options=5,
+                )
+                logger.info(
+                    "SufficiencyGate.post_extraction_check: branch=B sufficient=False "
+                    "reason=missing_mandatory_term qualifying_count=0 has_inv=False has_site=False "
+                    "ambiguous_count=0 snomed_unmet_count=%d",
+                    len(snomed_required_unmet),
+                    # NOT logged: filter values, option strings
+                )
+                return SufficiencyDecision(
+                    sufficient=False, reason="missing_mandatory_term",
+                    triggered_by=None, matched_entry=entry,
+                )
+
+        # BRANCH C — No mandatory term at all
+        qualifying = [m for m in snomed_matches if m.confidence >= 0.60 and not m.negated]
+        has_investigator = filters.investigator_name.value is not None
+        has_site = filters.site_name.value is not None
+
+        # C1: qualifying SNOMED found
+        if qualifying:
+            logger.info(
+                "SufficiencyGate.post_extraction_check: branch=C1 sufficient=True "
+                "reason=ok_post_extraction qualifying_count=%d has_inv=%s has_site=%s "
+                "ambiguous_count=0 snomed_unmet_count=%d",
+                len(qualifying), has_investigator, has_site,
+                len(snomed_required_unmet) if snomed_required_unmet else 0,
+                # NOT logged: filter values, snomed display strings
+            )
+            return SufficiencyDecision(sufficient=True, reason="ok_post_extraction")
+
+        # C2: no SNOMED, has any filter → old behavior
+        if _any_filter_set(filters):
+            logger.info(
+                "SufficiencyGate.post_extraction_check: branch=C2 sufficient=False "
+                "reason=filters_without_condition qualifying_count=0 has_inv=%s has_site=%s "
+                "ambiguous_count=0 snomed_unmet_count=%d",
+                has_investigator, has_site,
+                len(snomed_required_unmet) if snomed_required_unmet else 0,
+                # NOT logged: filter values, snomed display strings
+            )
+            return SufficiencyDecision(
+                sufficient=False, reason="filters_without_condition",
+                triggered_by=None, matched_entry=self._default_condition_prompt,
+            )
+
+        # C3: nothing — full mandatory term missing
+        entry = AmbiguousEntry(
+            trigger="__mandatory_term__",
+            category="indication",
+            question_template=(
+                "Your search needs at least one of: a medical condition, "
+                "investigator name, or research site. What would you like to search by?"
+            ),
+            options=[
+                "Medical Condition",
+                "Investigator Name",
+                "Research Site",
+                "Let me rephrase my query",
+            ],
+            override_terms=frozenset(),
+            max_options=4,
         )
-        return SufficiencyDecision(sufficient=True, reason="ok_post_extraction")
+        logger.info(
+            "SufficiencyGate.post_extraction_check: branch=C3 sufficient=False "
+            "reason=missing_mandatory_term qualifying_count=0 has_inv=%s has_site=%s "
+            "ambiguous_count=0 snomed_unmet_count=%d",
+            has_investigator, has_site,
+            len(snomed_required_unmet) if snomed_required_unmet else 0,
+            # NOT logged: filter values, option strings
+        )
+        return SufficiencyDecision(
+            sufficient=False, reason="missing_mandatory_term",
+            triggered_by=None, matched_entry=entry,
+        )
+
+    def _build_name_ambiguity_entry(self, ambiguous_names: list) -> AmbiguousEntry:
+        """Build AmbiguousEntry for name disambiguation. HIPAA: don't log option text."""
+        import html
+        question = (
+            "We found ambiguous names in your query. Please clarify by "
+            "selecting an option below, or retype using the format: "
+            "[name] investigator, [name] site"
+        )
+        n = len(ambiguous_names)
+        if n >= 2:
+            a = html.escape(ambiguous_names[0].text)
+            b = html.escape(ambiguous_names[1].text)
+            options = [
+                f"{a} investigator, {b} site",
+                f"{a} site, {b} investigator",
+                "Both are investigators",
+                "Both are sites",
+                "Let me rephrase my query",
+            ]
+        elif n == 1:
+            a = html.escape(ambiguous_names[0].text)
+            options = [
+                f"{a} is an investigator",
+                f"{a} is a research site",
+                "Neither — let me rephrase",
+            ]
+        else:
+            options = ["Let me rephrase my query", "Other", "Cancel"]
+        return AmbiguousEntry(
+            trigger="__name_ambiguity__",
+            category="indication",
+            question_template=question,
+            options=options,
+            override_terms=frozenset(),
+            max_options=5,
+        )
 
 
 # ---------------------------------------------------------------------------

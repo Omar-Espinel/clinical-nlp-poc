@@ -31,8 +31,8 @@ from src.sufficiency_gate import SufficiencyDecision
 # Wave 4 types — not yet implemented.  Import only for type-checking so that
 # test code can pass SimpleNamespace / mock objects at runtime without errors.
 if TYPE_CHECKING:
-    from src.extractor import ExtractedFilters  # noqa: F401 (Wave 4)
-    from src.normalizers.geo import GeoResult   # noqa: F401 (Wave 4)
+    from src.filter_extractor import ExtractedFilters  # noqa: F401
+    from src.normalizers.geo import GeoResult   # noqa: F401
 
 logger = logging.getLogger(__name__)
 
