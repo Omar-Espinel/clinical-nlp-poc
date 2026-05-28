@@ -50,12 +50,8 @@ METRIC_OP_DISPLAY = {
 
 
 @st.cache_resource
-def load_pipeline() -> Optional[NLPPipeline]:
-    """Load all pipeline components once and cache across sessions."""
-    api_key = os.getenv("GROQ_API_KEY") or st.secrets.get("GROQ_API_KEY", "")
-    if not api_key:
-        return None
-    return NLPPipeline(groq_api_key=api_key)
+def load_pipeline() -> NLPPipeline:
+    return NLPPipeline()
 
 
 def _safe(value: str) -> str:
