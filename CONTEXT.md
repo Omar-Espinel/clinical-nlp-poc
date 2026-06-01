@@ -1,7 +1,7 @@
 # Clinical Research NLP — Architecture Context
 
-## Status: ACTIVE · v2 rework merged
-## Last Updated: 2026-05-28
+## Status: ACTIVE · v2 rework merged · LLM-free (fully deterministic runtime)
+## Last Updated: 2026-06-01
 ## Platform: Python 3.13 · Streamlit · FastAPI
 
 ---
@@ -12,20 +12,22 @@ Takes free-text clinical research queries and returns structured search results 
 ---
 
 ## High-Level Architecture
-The system uses a **multi-turn pipeline** with a deterministic sufficiency gate to minimize LLM costs and latency.
+The system uses a **multi-turn pipeline** that is fully deterministic at runtime (no LLM) with a sufficiency gate to minimize latency and external dependencies.
 
 1.  **Preprocessor:** 3–500 char check, null-byte strip, ~77 regex safety patterns.
-2.  **ConversationSession:** Merges user input into a `canonical_query` (substitute or append).
+2.  **ConversationSession:** Merges user input into a `canonical_query` (substitute or append), then re-runs `assert_safe` on the merged query.
 3.  **SufficiencyGate (Layer 1):** Deterministic trigger detection for ambiguous terms (e.g., "cancer") from `ambiguous_terms.json` and auto-derived CSV tokens.
 4.  **Metric Resolver:** Aho-Corasick scan for 12 Advarra-specific metric fields.
-5.  **Extraction Path (Parallel):**
-    *   **FilterExtractor:** LLM (Groq/Llama-3.1) extracts filters (investigator, site, city, state, phase).
-    *   **SNOMED Strategy:** Algorithmic search (default: Hybrid Cascade — Exact → Synonym → Fuzzy → Semantic).
-6.  **NegationAnnotator:** NegEx-based deterministic negation detection.
-7.  **SufficiencyGate (Layer 2):** Embedding-based ambiguity detection (nearest neighbor spread).
-8.  **Clinical-Intent Gate:** Rejects if 0 SNOMED matches AND 0 filters set.
-9.  **GeoNormalizer:** Canonical city/state/region lookup.
-10. **ResponseAssembler:** Pydantic V2 model assembly for `NLPOutput` or `ClarificationOutput`.
+5.  **Preflight Mandatory Check:** Rejects early if no medical-condition / investigator / site signal is present.
+6.  **Extraction Path (Parallel):**
+    *   **DeterministicFilterExtractor:** Rule-based extraction — `PhaseExtractor` + `NameExtractor` + `MetricFieldAssembler` (investigator, site, city, state, phase). No LLM.
+    *   **SNOMED Strategy:** Algorithmic search (default: `pgvector_cascade`; auto-falls back to Hybrid Cascade — Exact → Synonym → Fuzzy → Semantic).
+7.  **NegationAnnotator:** NegEx-based deterministic negation detection.
+8.  **SufficiencyGate (Layer 2):** Embedding-based ambiguity detection (nearest-neighbor spread).
+9.  **Clinical-Intent Gate:** Rejects if 0 SNOMED matches AND 0 filters set.
+10. **Post-Extraction Safety + Metric Ambiguity Gates:** Final clarification checks against extracted results.
+11. **GeoNormalizer:** Canonical city/state/region lookup.
+12. **ResponseAssembler:** Re-runs `assert_safe`, then Pydantic V2 assembly of `NLPOutput` or `ClarificationOutput`.
 
 ---
 
@@ -36,7 +38,7 @@ The system uses a **multi-turn pipeline** with a deterministic sufficiency gate 
 | `Pipeline` | Orchestrator | `run_with_session()`, parallel execution, error handling. |
 | `Preprocessor` | Safety | Input sanitization, injection defense, length limits. |
 | `SufficiencyGate` | Ambiguity | Registry-based triggers (L1) and embedding signals (L2). |
-| `FilterExtractor` | Extraction | LLM-driven structured filter parsing (Kansas City fix). |
+| `DeterministicFilterExtractor` | Extraction | Rule-based structured filter parsing (phase, names, metrics). No LLM. |
 | `SNOMED Search` | Mapping | Pluggable strategies for term-to-code resolution. |
 | `Negation` | Context | NegEx cues for excluding negated clinical terms. |
 | `Normalizers` | Data | Geo (rapidfuzz) and Metric (Aho-Corasick) normalization. |
@@ -81,11 +83,11 @@ The system uses a **multi-turn pipeline** with a deterministic sufficiency gate 
 1. `Preprocessor.process()`: ~77 regex patterns (injection, harmful content).
 2. `Preprocessor.assert_safe()`: Defense-in-depth on merged canonical query.
 3. **Clinical-Intent Gate:** Prevents non-clinical queries from reaching full processing.
-4. **HTML Escaping:** `ResponseAssembler` escapes all user/LLM derived strings.
+4. **HTML Escaping:** `ResponseAssembler` escapes all user-derived strings.
 5. **Rate Limiting:** 5/60s and 30/session (app.py).
 
 ### HIPAA Log Hygiene
-*   **NEVER logged:** Raw query, canonical query, filter values, SNOMED displays, LLM responses.
+*   **NEVER logged:** Raw query, canonical query, filter values, SNOMED displays.
 *   **LOGGED:** Counts, lengths, confidence scores, SNOMED codes, decision enums, latency.
 *   **Audit Tool:** Grep for `to_dict()` or `repr(session)` in logs (use `session.summary_for_logging()`).
 
@@ -97,18 +99,19 @@ The system uses a **multi-turn pipeline** with a deterministic sufficiency gate 
 |---|---|---|
 | `MIN_CONFIDENCE` | `0.60` | SNOMED/Geo inclusion threshold |
 | `SEMANTIC_THRESHOLD` | `0.82` | Semantic search FP/FN tradeoff |
-| `PARALLEL_TIMEOUT` | `15.0s` | Hard cap on LLM + SNOMED search |
+| `PARALLEL_TIMEOUT` | `15.0s` | Hard cap on deterministic extraction + SNOMED search |
 | `MAX_TURNS` | `3` | Max clarifications per session |
 | `MIN_VALID_YEAR` | `2000` | DOB-leak mitigation for dates |
 
-**Env Vars:** `GROQ_API_KEY` (required), `LLM_PROVIDER` (default: `groq`), `SNOMED_SEARCH_STRATEGY` (default: `hybrid_cascade`), `AMBIG_STRICT_VALIDATION` (default: `true`).
+**Env Vars:** `SNOMED_SEARCH_STRATEGY` (default: `pgvector_cascade`), `DATABASE_URL` (required when pgvector_cascade is active), `API_KEY` (optional — API auth; auth skipped if unset), `BIOPORTAL_API_KEY` (optional — FHIR fallback), `AMBIG_STRICT_VALIDATION` (default: `false`), `METRIC_STRICT_VALIDATION` (default: `true`). No LLM/Groq key is used — the runtime is fully deterministic.
 
 ---
 
 ## Key Extension Points
 *   **SNOMED Strategies:** Implement `SNOMEDSearchStrategy` protocol in `src/snomed_search/`.
-*   **LLM Providers:** Implement `LLMProvider` protocol in `src/llm_provider/`.
 *   **Filters:** Add fields to `ExtractedFilters` in `src/filter_extractor.py` and update assembler.
+
+> **Note:** LLM integration was removed. There is no `src/llm_provider/` and no Groq/LLM runtime dependency — filter extraction is fully rule-based.
 
 ---
 
@@ -128,7 +131,7 @@ See `README.md` for a high-level overview. Project root contains `api.py` (FastA
 ---
 
 ## pgvector_cascade Strategy (DEFAULT as of 2026-05-27)
-- PostgreSQL + pgvector backend for SNOMED matching at 80k-150k concept scale; production index is 122,410 concepts.
+- PostgreSQL + pgvector backend for SNOMED matching at 80k–150k concept scale; the restore-shipped index (`restore_db.bat`) verifies 90,904 concepts. (The 122,410 figure in the 2026-05-27 log entry below refers to an earlier production index snapshot.)
 - Schema: `clinical_nlp` (isolated). Migration: `db/migrations/001_create_snomed_schema.sql`
 - Build: `python scripts/build_snomed_index.py` (see `docs/DATA_SOURCES.md`)
 - Now the registry's `DEFAULT_STRATEGY`. On implicit-default init failure (DB unreachable, dependency missing, health-check fail), the registry auto-falls back to `hybrid_cascade` and logs a WARNING with `error_type`. An explicit `SNOMED_SEARCH_STRATEGY` env var override is honoured verbatim — no silent swap.

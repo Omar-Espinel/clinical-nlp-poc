@@ -2,7 +2,6 @@
 
 import html
 import logging
-import os
 import time
 from typing import Optional
 
@@ -337,12 +336,6 @@ def render_sidebar(pipeline_ready: bool) -> None:
             st.rerun()
 
         st.header("System Status")
-        api_key = os.getenv("GROQ_API_KEY") or st.secrets.get("GROQ_API_KEY", "")
-        if api_key:
-            st.markdown("🟢 **API Key:** Configured")
-        else:
-            st.markdown("🔴 **API Key:** Not found")
-
         if pipeline_ready:
             st.markdown("🟢 **Pipeline:** Ready")
         else:
@@ -384,15 +377,6 @@ def main() -> None:
     st.markdown(
         "*Extract SNOMED CT concepts and structured filters from clinical research queries.*"
     )
-
-    if pipeline is None:
-        st.error(
-            "⚠️ GROQ_API_KEY not found.\n\n"
-            "To run locally: Add GROQ_API_KEY to your .env file\n\n"
-            "To run on HuggingFace: Add GROQ_API_KEY to Space Secrets\n\n"
-            "Get a free key at: https://console.groq.com"
-        )
-        st.stop()
 
     if "pipeline_loaded" not in st.session_state:
         with st.spinner("Loading Clinical NLP System... (first load 30-60s)"):

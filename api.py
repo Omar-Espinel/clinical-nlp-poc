@@ -119,7 +119,7 @@ pipeline: NLPPipeline | None = None
 async def lifespan(app: FastAPI):
     global pipeline
     try:
-        pipeline = NLPPipeline()   # ← no args; reads GROQ_API_KEY from env internally
+        pipeline = NLPPipeline()
         log.info("Pipeline initialized successfully")
     except Exception as e:
         log.critical("Pipeline init failed: %s", type(e).__name__)
