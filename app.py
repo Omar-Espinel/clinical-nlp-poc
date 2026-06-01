@@ -279,12 +279,34 @@ def _render_turn_result(turn_index: int, turn) -> None:
     else:
         # Clarification turn — render question + hint list; user replies via chat_input.
         clarif = st.session_state.get("turn_outputs", {}).get(turn_index)
-        if clarif is not None and isinstance(clarif, ClarificationOutput):
-            st.markdown(f"**{clarif.question}**")
-            if clarif.options:
-                items = "\n".join(f"- {opt}" for opt in clarif.options)
-                st.markdown(items)
-            st.markdown("*Type your answer in the box below.*")
+        if clarif is not None:
+            # Use duck typing to extract question/options: handles Pydantic models,
+            # dicts, and instances that survived Streamlit module reloads
+            # (where isinstance may fail due to class identity changes).
+            question = None
+            options = []
+
+            if isinstance(clarif, dict):
+                question = clarif.get("question")
+                options = clarif.get("options", [])
+            elif isinstance(clarif, ClarificationOutput):
+                question = clarif.question
+                options = clarif.options
+            else:
+                # Fallback: try attribute access (covers pickled objects
+                # from previous module versions)
+                if hasattr(clarif, "question"):
+                    question = getattr(clarif, "question", None)
+                    options = getattr(clarif, "options", [])
+
+            if question:
+                st.markdown(f"**{question}**")
+                if options:
+                    items = "\n".join(f"- {opt}" for opt in options)
+                    st.markdown(items)
+                st.markdown("*Type your answer in the box below.*")
+            else:
+                st.markdown("*Please clarify your query.*")
         else:
             st.markdown("*Please clarify your query.*")
 

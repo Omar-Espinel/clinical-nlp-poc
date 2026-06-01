@@ -886,6 +886,17 @@ class SufficiencyGate:
             )
             return SufficiencyDecision(sufficient=True, reason="ok_post_extraction")
 
+        # C1b: no qualifying SNOMED, but has investigator or site
+        if has_investigator or has_site:
+            logger.info(
+                "SufficiencyGate.post_extraction_check: branch=C1b sufficient=True "
+                "reason=ok_post_extraction qualifying_count=0 has_inv=%s has_site=%s "
+                "ambiguous_count=0 snomed_unmet_count=%d",
+                has_investigator, has_site,
+                len(snomed_required_unmet) if snomed_required_unmet else 0,
+            )
+            return SufficiencyDecision(sufficient=True, reason="ok_post_extraction")
+
         # C2: no SNOMED, has any filter → old behavior
         if _any_filter_set(filters):
             logger.info(

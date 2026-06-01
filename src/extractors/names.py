@@ -100,6 +100,15 @@ _STOPWORDS: frozenset[str] = frozenset({
     "Institute", "University", "College", "School", "Medical", "Health",
     "Care", "System", "Network", "Foundation", "Society", "Association",
     "Inc", "Llc", "Corp", "Ltd",
+    "In", "On", "At", "To", "Of", "Or", "And", "But", "For", "With", "By",
+    "From", "Into", "Upon", "About", "After", "Before", "During", "Since",
+    "Until", "While", "Where", "When", "Why", "How", "What", "Which", "Who",
+    "Whom", "Whose", "This", "That", "These", "Those", "Is", "Are", "Was",
+    "Were", "Be", "Been", "Being", "Have", "Has", "Had", "Do", "Does", "Did",
+    "Will", "Would", "Should", "Could", "May", "Might", "Must", "Can", "The",
+    "A", "An", "As", "If", "So", "No", "Not", "All", "Any", "Some", "Few",
+    "Many", "More", "Most", "Other", "Such", "Own", "Same", "Studies", "Find",
+    "Show", "List",
 })
 
 # ---------------------------------------------------------------------------
@@ -187,7 +196,12 @@ def _extract_name_from_normalized(
 # NameExtractor
 # ---------------------------------------------------------------------------
 class NameExtractor:
-    def __init__(self, institution_keywords_path: str, geo_json_path: str) -> None:
+    def __init__(
+        self,
+        institution_keywords_path: str,
+        geo_json_path: str,
+        snomed_known_terms: frozenset[str] = frozenset(),
+    ) -> None:
         # Load and validate institution_keywords.json
         with open(institution_keywords_path, encoding="utf-8") as fh:
             inst = json.load(fh)
@@ -252,6 +266,28 @@ class NameExtractor:
             self._geo_single_word_keys
             | frozenset(k for k in self._state_keys if " " not in k)
         )
+
+        self._snomed_single_tokens: frozenset[str] = frozenset(
+            term for term in snomed_known_terms
+            if " " not in term and len(term) >= 5
+        )
+        self._snomed_multi_tokens: frozenset[tuple] = frozenset(
+            tuple(term.split())
+            for term in snomed_known_terms
+            if 2 <= len(term.split()) <= 3
+        )
+
+    # ------------------------------------------------------------------
+    # _is_snomed_token_sequence
+    # ------------------------------------------------------------------
+    def _is_snomed_token_sequence(self, tokens) -> bool:
+        """True if the token sequence exactly matches a known SNOMED term (single or 2-3 token)."""
+        toks = tuple(t.lower() for t in tokens)
+        if len(toks) == 1:
+            return toks[0] in self._snomed_single_tokens
+        if 2 <= len(toks) <= 3:
+            return toks in self._snomed_multi_tokens
+        return False
 
     # ------------------------------------------------------------------
     # _is_institution_context
@@ -499,6 +535,16 @@ class NameExtractor:
                 tokens.pop()
             if not tokens:
                 continue
+            trimmed_tokens = []
+            for i, tok in enumerate(tokens):
+                if tok.lower() in self._snomed_single_tokens:
+                    break
+                if i + 1 < len(tokens) and (tok.lower(), tokens[i + 1].lower()) in self._snomed_multi_tokens:
+                    break
+                trimmed_tokens.append(tok)
+            if not trimmed_tokens:
+                continue
+            tokens = trimmed_tokens
             cand = " ".join(tokens)
             # Recompute span to match trimmed name
             name_start = m.start(2)
@@ -549,6 +595,16 @@ class NameExtractor:
                 title_tokens = _TITLE_TOKEN.findall(after_norm)[:3]
                 if not title_tokens:
                     continue
+                trimmed_tokens = []
+                for i, tok in enumerate(title_tokens):
+                    if tok.lower() in self._snomed_single_tokens:
+                        break
+                    if i + 1 < len(title_tokens) and (tok.lower(), title_tokens[i + 1].lower()) in self._snomed_multi_tokens:
+                        break
+                    trimmed_tokens.append(tok)
+                if not trimmed_tokens:
+                    continue
+                title_tokens = trimmed_tokens
                 candidate = " ".join(title_tokens)
                 # find span in norm (same positions as original)
                 tok_m = re.search(re.escape(title_tokens[0]), after_norm)
@@ -669,6 +725,13 @@ class NameExtractor:
             if len(candidate) > MAX_NAME_LENGTH:
                 continue
             tokens_count = len(candidate.split())
+
+            if self._is_snomed_token_sequence(candidate.split()):
+                continue
+            if tokens_count >= 2:
+                leading_tokens = candidate.split()[:3]
+                if self._is_snomed_token_sequence(leading_tokens):
+                    continue
 
             if cand_lower_text in self._multiword_set:
                 if site_conf < 0.90:

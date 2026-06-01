@@ -17,9 +17,16 @@ GEO_PATH = str(PROJECT_ROOT / "data" / "geo_canonical.json")
 
 @pytest.fixture(scope="module")
 def extractor() -> NameExtractor:
+    snomed_terms = frozenset({
+        "hypertension",
+        "myocardial infarction",
+        "parkinson disease",
+        "hodgkin lymphoma",
+    })
     return NameExtractor(
         institution_keywords_path=INST_KW_PATH,
         geo_json_path=GEO_PATH,
+        snomed_known_terms=snomed_terms,
     )
 
 
@@ -180,3 +187,66 @@ def test_boston_childrens(extractor: NameExtractor) -> None:
     assert "Children" in result.site_name or "children" in result.site_name.lower()
     assert result.site_confidence >= 0.85
     assert result.investigator_name is None
+
+
+# ---------------------------------------------------------------------------
+# Test 15: STEP 3 stops at SNOMED single token
+# ---------------------------------------------------------------------------
+def test_step3_stops_at_snomed_single_token(extractor: NameExtractor) -> None:
+    result = extractor.extract("investigator johnson hypertension")
+    assert result.investigator_name == "Johnson"
+    assert result.investigator_confidence >= 0.80
+    assert result.site_name is None
+    assert result.ambiguous_names == []
+
+
+# ---------------------------------------------------------------------------
+# Test 16: STEP 3 stops at SNOMED multi-token
+# ---------------------------------------------------------------------------
+def test_step3_stops_at_snomed_multi_token(extractor: NameExtractor) -> None:
+    result = extractor.extract("trials by johnson myocardial infarction")
+    assert result.investigator_name == "Johnson"
+    assert result.investigator_confidence >= 0.80
+    assert result.site_name is None
+    assert result.ambiguous_names == []
+
+
+# ---------------------------------------------------------------------------
+# Test 17: STEP 5 skips SNOMED multi-token
+# ---------------------------------------------------------------------------
+def test_step5_skips_snomed_multi_token(extractor: NameExtractor) -> None:
+    result = extractor.extract("myocardial infarction phase 2 boston")
+    assert result.investigator_name is None
+    assert result.site_name is None
+    assert result.ambiguous_names == []
+
+
+# ---------------------------------------------------------------------------
+# Test 18: STEP 3 — "parkinson" alone not a SNOMED stop token
+# ---------------------------------------------------------------------------
+def test_step3_parkinson_alone_not_snomed_stop(extractor: NameExtractor) -> None:
+    result = extractor.extract("dr parkinson diabetes")
+    assert result.investigator_name == "Parkinson"
+    assert result.investigator_confidence >= 0.95
+    assert result.site_name is None
+
+
+# ---------------------------------------------------------------------------
+# Test 19: STEP 3 — "hodgkin" alone not a SNOMED stop token
+# ---------------------------------------------------------------------------
+def test_step3_hodgkin_alone_not_snomed_stop(extractor: NameExtractor) -> None:
+    result = extractor.extract("dr hodgkin diabetes trials")
+    assert result.investigator_name == "Hodgkin"
+    assert result.investigator_confidence >= 0.95
+    assert result.site_name is None
+
+
+# ---------------------------------------------------------------------------
+# Test 20: STEP 3 — "hodgkin lymphoma" IS a SNOMED stop token
+# ---------------------------------------------------------------------------
+def test_step3_hodgkin_lymphoma_is_snomed_stop(extractor: NameExtractor) -> None:
+    result = extractor.extract("dr hodgkin lymphoma trials")
+    # Either no extraction or benign extraction (not disease name)
+    if result.investigator_name is not None:
+        assert "hodgkin" not in result.investigator_name.lower()
+    assert result.site_name is None

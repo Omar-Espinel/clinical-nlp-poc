@@ -1,7 +1,7 @@
 # Clinical Research NLP — Architecture Context
 
 ## Status: ACTIVE · v2 rework merged
-## Last Updated: 2026-05-13
+## Last Updated: 2026-05-28
 ## Platform: Python 3.13 · Streamlit · FastAPI
 
 ---
@@ -139,6 +139,28 @@ See `README.md` for a high-level overview. Project root contains `api.py` (FastA
 ---
 
 ## Post-Build Changes Log
+
+### 2026-05-28 — NameExtractor SNOMED-aware stop logic
+
+**What:** NameExtractor now accepts the CSV-derived `snomed_known_terms` frozenset and uses it to truncate name candidates at SNOMED-term boundaries. Single-token stops (e.g. "hypertension", min length 5, no spaces) and 2–3-token stops (e.g. "myocardial infarction", "hodgkin lymphoma") are checked at extraction time so clinical terms can no longer be swallowed into a person or site name.
+
+**Why:** Deterministic name extraction was greedy — phrases like "investigator johnson hypertension" or "trials by johnson myocardial infarction" were producing names like "Johnson Hypertension" / "Johnson Myocardial Infarction" because STEP 1/3 (signal-anchored capture) and STEP 5 (residual title-case sweep) had no notion of what was a clinical concept vs a proper noun. Pipeline already builds `_known_terms` from the SNOMED CSV for preflight; the fix threads that same frozenset into NameExtractor and consults it as a stop list. Eponymous terms (e.g. "hodgkin" alone, "parkinson" alone) are deliberately NOT in the single-token set — the CSV stores them as "hodgkin lymphoma" / "parkinson disease", so a person actually named Hodgkin or Parkinson is still extractable when followed by non-SNOMED context.
+
+**Files touched:**
+- `src/pipeline.py` — builds `_known_terms` from CSV before constructing `DeterministicFilterExtractor` and passes it as `snomed_known_terms=_known_terms`. (The frozenset is also still used by the existing preflight Signal-F logic further down — same source, two consumers.)
+- `src/filter_extractor.py` — `DeterministicFilterExtractor.__init__` accepts `snomed_known_terms: frozenset[str] = frozenset()` and forwards it to `NameExtractor`.
+- `src/extractors/names.py` — `NameExtractor.__init__` accepts `snomed_known_terms`, builds `self._snomed_single_tokens` (single-word terms, len ≥ 5) and `self._snomed_multi_tokens` (2–3 word tuples). New method `_is_snomed_token_sequence(tokens)` does exact-match-only lookup (no substring match). STEP 1 and STEP 3 truncate the title-case token list at the first SNOMED-stop boundary; STEP 5 skips candidates whose full sequence or leading 2–3 tokens are a SNOMED multi-token.
+- `tests/test_name_extractor.py` — fixture updated to pass a minimal `snomed_known_terms` set; 6 new tests cover STEP 3 single/multi-token stops, STEP 5 multi-token skip, Parkinson/Hodgkin standalone (not stopped), and Hodgkin+Lymphoma (stopped).
+
+**Critical constraints honoured:**
+- Parameter is keyword-only with `frozenset()` default — no signature break for any caller that doesn't thread the set through.
+- Exact-match-only semantics — substring matches do NOT trigger a stop, so "parkinson" alone never blocks extraction even though "parkinson disease" is a SNOMED term.
+- No change to `_is_snomed_token_sequence` callable surface or NameExtractor's public output schema.
+- No new comments beyond docstrings (project style: comments explain WHY, not WHAT).
+
+**Test status after change:** 329 passed, 3 failed. The 3 failures are the pre-existing `tests/test_pgvector_cascade.py` cases noted in the 2026-05-27 entry (latency threshold + recall assertions against the live 122k DB) — unrelated to this work.
+
+---
 
 ### 2026-05-27 — pgvector wiring + auto-fallback default (+ Layer 2 parity)
 

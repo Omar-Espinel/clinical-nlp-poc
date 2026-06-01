@@ -165,18 +165,18 @@ class NLPPipeline:
         self._metric_gate = MetricAmbiguityGate(self._metric_resolver)
 
         # Step 4b: Deterministic filter extractor (replaces LLM-based extractor)
+        # Build known_terms from CSV directly (strategy-agnostic)
+        _known_terms = self._build_known_terms_from_csv(_snomed_csv)
+
         self._extractor = DeterministicFilterExtractor(
             known_metric_fields=self._metric_resolver._known_metric_fields,
             geo_normalizer=self._geo,
             institution_keywords_path=_institution_kw_path,
             geo_json_path=_geo_path,
+            snomed_known_terms=_known_terms,
         )
 
         # Step 4c: Preflight mandatory check
-        # FIX 1: build known_terms from CSV directly (strategy-agnostic) so the
-        # signal works regardless of whether the active SNOMED strategy exposes
-        # internal indexes (pgvector_cascade does not).
-        _known_terms = self._build_known_terms_from_csv(_snomed_csv)
 
         # Multi-word geo phrases (anything with a space). Single-word geo keys
         # are deliberately excluded so they remain ambiguous in Signal F.

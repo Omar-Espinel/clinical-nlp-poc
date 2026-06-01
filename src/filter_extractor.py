@@ -75,6 +75,7 @@ class DeterministicFilterExtractor:
         geo_normalizer=None,
         institution_keywords_path: Optional[str] = None,
         geo_json_path: Optional[str] = None,
+        snomed_known_terms: frozenset[str] = frozenset(),
     ) -> None:
         from src.extractors.phase import PhaseExtractor
         from src.extractors.names import NameExtractor
@@ -90,6 +91,7 @@ class DeterministicFilterExtractor:
         self._names = NameExtractor(
             institution_keywords_path=institution_keywords_path,
             geo_json_path=geo_json_path,
+            snomed_known_terms=snomed_known_terms,
         )
         self._metric_assembler = MetricFieldAssembler()
         self._known_metric_fields = known_metric_fields
