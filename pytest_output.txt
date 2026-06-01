@@ -1,0 +1,72 @@
+........................................................................ [ 21%]
+........................................................................ [ 43%]
+........................................................................ [ 65%]
+...........................F.F...........F.............................. [ 86%]
+............................................                             [100%]
+================================== FAILURES ===================================
+___________________ test_exact_match_returns_confidence_1_0 ___________________
+
+test_db = 'postgresql://postgres:postgres@localhost:5432/clinical_nlp'
+
+    def test_exact_match_returns_confidence_1_0(test_db):
+        strategy = PgVectorCascadeStrategy(dictionary_path="", database_url=test_db)
+        results = strategy.search("diabetes mellitus")
+        assert len(results) == 1
+>       assert results[0].code == "73211009"
+E       AssertionError: assert 'SNOMED:73211009' == '73211009'
+E         
+E         - 73211009
+E         + SNOMED:73211009
+
+tests\test_pgvector_cascade.py:116: AssertionError
+_______________________ test_fuzzy_match_handles_typos ________________________
+
+test_db = 'postgresql://postgres:postgres@localhost:5432/clinical_nlp'
+
+    def test_fuzzy_match_handles_typos(test_db):
+        strategy = PgVectorCascadeStrategy(dictionary_path="", database_url=test_db)
+        results = strategy.search("diabetis")
+        assert len(results) >= 1
+        assert any("diabetes" in r.display.lower() for r in results)
+>       assert any(0.75 <= r.confidence <= 0.85 for r in results if r.match_type == "fuzzy")
+E       assert False
+E        +  where False = any(<generator object test_fuzzy_match_handles_typos.<locals>.<genexpr> at 0x000002A51D4C7440>)
+
+tests\test_pgvector_cascade.py:134: AssertionError
+___________________ test_semantic_search_latency_benchmark ____________________
+
+test_db = 'postgresql://postgres:postgres@localhost:5432/clinical_nlp'
+
+    def test_semantic_search_latency_benchmark(test_db):
+        import time
+        strategy = PgVectorCascadeStrategy(dictionary_path="", database_url=test_db)
+        conn = strategy._db_pool.getconn()
+        try:
+            start = time.monotonic()
+            results = strategy._semantic_match(conn, "diabetes")
+            elapsed_ms = (time.monotonic() - start) * 1000
+        finally:
+            strategy._db_pool.putconn(conn)
+    
+>       assert elapsed_ms < 10, f"Semantic search took {elapsed_ms}ms (threshold: 10ms)"
+E       AssertionError: Semantic search took 31.958999985363334ms (threshold: 10ms)
+E       assert 31.958999985363334 < 10
+
+tests\test_pgvector_cascade.py:306: AssertionError
+============================== warnings summary ===============================
+tests/test_ambiguity_coverage.py: 1 warning
+tests/test_snomed_strategies.py: 155 warnings
+tests/test_sufficiency_gate.py: 3 warnings
+  C:\Claude work\advarra\clinical-nlp-poc\src\snomed_search\hybrid_cascade.py:630: DeprecationWarning: Conversion of an array with ndim > 0 to a scalar is deprecated, and will error in future. Ensure you extract a single element from your array before performing this operation. (Deprecated NumPy 1.25.)
+    similarity = float(similarities[best_idx])
+
+tests/test_snomed_strategies.py: 520 warnings
+  C:\Claude work\advarra\clinical-nlp-poc\src\snomed_resolver.py:266: DeprecationWarning: Conversion of an array with ndim > 0 to a scalar is deprecated, and will error in future. Ensure you extract a single element from your array before performing this operation. (Deprecated NumPy 1.25.)
+    similarity = float(similarities[best_idx])
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_pgvector_cascade.py::test_exact_match_returns_confidence_1_0
+FAILED tests/test_pgvector_cascade.py::test_fuzzy_match_handles_typos - asser...
+FAILED tests/test_pgvector_cascade.py::test_semantic_search_latency_benchmark
+3 failed, 329 passed, 679 warnings in 111.93s (0:01:51)

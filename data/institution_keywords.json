@@ -1,0 +1,27 @@
+{
+  "primary_keywords": [
+    "hospital", "clinic", "medical center", "medical school",
+    "health system", "health center", "healthcare",
+    "cancer center", "cancer institute",
+    "university", "college", "institute", "school of medicine",
+    "research center", "research institute", "foundation",
+    "pharma", "pharmaceuticals", "biotech", "biosciences",
+    "therapeutics", "oncology group", "children's", "childrens",
+    "veterans affairs", "va medical", "md anderson",
+    "infusion center", "genomics center", "surgery center"
+  ],
+  "legal_suffixes": [
+    "inc", "llc", "corp", "ltd", "incorporated", "limited"
+  ],
+  "known_multiword_sites": [
+    "johns hopkins", "mayo clinic", "cleveland clinic",
+    "memorial sloan kettering", "md anderson", "mass general",
+    "massachusetts general", "cedars sinai", "cedars-sinai",
+    "mount sinai", "stanford medicine", "ucsf", "ucla health",
+    "duke university", "yale new haven", "vanderbilt university",
+    "emory university", "northwestern university",
+    "university of michigan", "university of toronto",
+    "university health network", "boston children's",
+    "children's hospital", "veterans affairs"
+  ]
+}

@@ -53,7 +53,9 @@ pip install -r requirements.txt
 **2. Configure**
 cp .env.example .env
 
-Edit .env: add GROQ_API_KEY and API_KEY
+Edit .env: add API_KEY (optional API auth). For the pgvector_cascade SNOMED
+strategy also set DATABASE_URL, and optionally BIOPORTAL_API_KEY for the FHIR
+fallback. No LLM/Groq key is required — the runtime is fully deterministic.
 
 **3. Run**
 
@@ -88,7 +90,6 @@ Opens at http://localhost:8501
 docker build -t clinical-nlp-api .
 
 docker run -p 8000:8000
--e GROQ_API_KEY=your_key_here
 -e API_KEY=your_internal_key_here
 clinical-nlp-api
 
@@ -169,8 +170,8 @@ REST API (api.py — FastAPI + Uvicorn)
 Streamlit UI (app.py)
 └── src/pipeline.py — NLPPipeline.run_with_session()
 ├── src/preprocessor.py — ~77 security/injection patterns
-├── src/sufficiency_gate.py — ambiguity detection (no LLM cost)
-├── src/filter_extractor.py — Groq LLM filter extraction
+├── src/sufficiency_gate.py — deterministic ambiguity detection
+├── src/filter_extractor.py — deterministic rule-based filter extraction (no LLM)
 ├── src/snomed_search/ — pluggable SNOMED strategies
 │ ├── hybrid_cascade.py — exact → synonym → fuzzy → semantic
 │ ├── aho_corasick.py
@@ -189,17 +190,6 @@ data/
 
 ---
 
-## Getting a Groq API Key
-
-1. Go to https://console.groq.com
-2. Sign up for a free account
-3. Navigate to API Keys and click Create API Key
-4. Add to `.env` as `GROQ_API_KEY=your_key_here`
-
-Free tier: ~30 requests/minute, 500/day.
-
----
-
 ## Tech Stack
 
 | Package | Version | Purpose |
@@ -207,8 +197,7 @@ Free tier: ~30 requests/minute, 500/day.
 | fastapi | >=0.115.0 | REST API framework |
 | uvicorn | >=0.32.0 | ASGI server |
 | streamlit | 1.40.0 | Chat UI |
-| groq | 0.11.0 | LLM API client |
-| sentence-transformers | 3.2.1 | Semantic SNOMED search |
+| sentence-transformers | 3.2.1 | SNOMED vector embeddings (semantic search) |
 | rapidfuzz | 3.10.0 | Fuzzy string matching |
 | pyahocorasick | >=2.0.0 | Metric field AC automaton |
 | pydantic | 2.9.2 | Output schema validation |
@@ -244,6 +233,6 @@ Full deployment instructions: see DEPLOYMENT.md
 
 ### Start the app
 1. Copy .env.example to .env
-2. Add your GROQ_API_KEY and BIOPORTAL_API_KEY
+2. Optionally add BIOPORTAL_API_KEY (for the FHIR fallback). No LLM/Groq key is needed.
 3. pip install -r requirements.txt
 4. streamlit run app.py

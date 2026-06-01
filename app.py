@@ -2,7 +2,6 @@
 
 import html
 import logging
-import os
 import time
 from typing import Optional
 
@@ -50,12 +49,8 @@ METRIC_OP_DISPLAY = {
 
 
 @st.cache_resource
-def load_pipeline() -> Optional[NLPPipeline]:
-    """Load all pipeline components once and cache across sessions."""
-    api_key = os.getenv("GROQ_API_KEY") or st.secrets.get("GROQ_API_KEY", "")
-    if not api_key:
-        return None
-    return NLPPipeline(groq_api_key=api_key)
+def load_pipeline() -> NLPPipeline:
+    return NLPPipeline()
 
 
 def _safe(value: str) -> str:
@@ -283,12 +278,34 @@ def _render_turn_result(turn_index: int, turn) -> None:
     else:
         # Clarification turn — render question + hint list; user replies via chat_input.
         clarif = st.session_state.get("turn_outputs", {}).get(turn_index)
-        if clarif is not None and isinstance(clarif, ClarificationOutput):
-            st.markdown(f"**{clarif.question}**")
-            if clarif.options:
-                items = "\n".join(f"- {opt}" for opt in clarif.options)
-                st.markdown(items)
-            st.markdown("*Type your answer in the box below.*")
+        if clarif is not None:
+            # Use duck typing to extract question/options: handles Pydantic models,
+            # dicts, and instances that survived Streamlit module reloads
+            # (where isinstance may fail due to class identity changes).
+            question = None
+            options = []
+
+            if isinstance(clarif, dict):
+                question = clarif.get("question")
+                options = clarif.get("options", [])
+            elif isinstance(clarif, ClarificationOutput):
+                question = clarif.question
+                options = clarif.options
+            else:
+                # Fallback: try attribute access (covers pickled objects
+                # from previous module versions)
+                if hasattr(clarif, "question"):
+                    question = getattr(clarif, "question", None)
+                    options = getattr(clarif, "options", [])
+
+            if question:
+                st.markdown(f"**{question}**")
+                if options:
+                    items = "\n".join(f"- {opt}" for opt in options)
+                    st.markdown(items)
+                st.markdown("*Type your answer in the box below.*")
+            else:
+                st.markdown("*Please clarify your query.*")
         else:
             st.markdown("*Please clarify your query.*")
 
@@ -319,12 +336,6 @@ def render_sidebar(pipeline_ready: bool) -> None:
             st.rerun()
 
         st.header("System Status")
-        api_key = os.getenv("GROQ_API_KEY") or st.secrets.get("GROQ_API_KEY", "")
-        if api_key:
-            st.markdown("🟢 **API Key:** Configured")
-        else:
-            st.markdown("🔴 **API Key:** Not found")
-
         if pipeline_ready:
             st.markdown("🟢 **Pipeline:** Ready")
         else:
@@ -366,15 +377,6 @@ def main() -> None:
     st.markdown(
         "*Extract SNOMED CT concepts and structured filters from clinical research queries.*"
     )
-
-    if pipeline is None:
-        st.error(
-            "⚠️ GROQ_API_KEY not found.\n\n"
-            "To run locally: Add GROQ_API_KEY to your .env file\n\n"
-            "To run on HuggingFace: Add GROQ_API_KEY to Space Secrets\n\n"
-            "Get a free key at: https://console.groq.com"
-        )
-        st.stop()
 
     if "pipeline_loaded" not in st.session_state:
         with st.spinner("Loading Clinical NLP System... (first load 30-60s)"):

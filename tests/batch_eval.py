@@ -49,7 +49,7 @@ from src.pipeline import NLPPipeline
 from src.assembler import NLPOutput, ClarificationOutput
 from src.conversation import ConversationSession
 from src.preprocessor import PreprocessorError
-from src.extractor import ExtractionError
+from src.exceptions import ExtractionError
 
 FUZZY_THRESHOLD = 88
 
@@ -440,11 +440,6 @@ def main() -> int:
     if args.strategy:
         os.environ["SNOMED_SEARCH_STRATEGY"] = args.strategy
 
-    api_key = os.getenv("GROQ_API_KEY", "")
-    if not api_key:
-        print("ERROR: GROQ_API_KEY not set. Add it to .env or environment.")
-        return 1
-
     input_path = Path(args.input)
     if not input_path.exists():
         print(f"ERROR: Input file not found: {input_path}")
@@ -460,7 +455,7 @@ def main() -> int:
     mode_desc = "legacy pipeline.run()" if args.legacy else "run_with_session()"
     strategy_desc = f" | strategy={args.strategy}" if args.strategy else ""
     print(f"Loading pipeline (first run may take 30-60s)... [{mode_desc}{strategy_desc}]")
-    pipeline = NLPPipeline(groq_api_key=api_key)
+    pipeline = NLPPipeline()
     print("Pipeline ready.\n")
 
     with open(input_path, newline="", encoding="utf-8") as fh:

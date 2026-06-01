@@ -47,7 +47,7 @@ logging.basicConfig(level=logging.WARNING)
 from src.pipeline import NLPPipeline
 from src.assembler import NLPOutput
 from src.preprocessor import PreprocessorError
-from src.extractor import ExtractionError
+from src.exceptions import ExtractionError
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 FUZZY_THRESHOLD    = 88

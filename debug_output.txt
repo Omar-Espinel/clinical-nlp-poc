@@ -1,0 +1,30 @@
+
+Query: 'lung cancer research on new york by dr holtz in phase 2 or 3'
+  investigator: 'Holtz In' (0.95)
+  site:         None (0.0)
+  ambiguous:    ['New', 'York']
+
+Query: 'phase ii studies by dr holmes'
+  investigator: 'Holmes' (0.95)
+  site:         None (0.0)
+  ambiguous:    ['Studies', 'By']
+
+Query: 'dr holmes'
+  investigator: 'Holmes' (0.95)
+  site:         None (0.0)
+  ambiguous:    []
+
+Query: 'studies by dr holmes'
+  investigator: 'Holmes' (0.95)
+  site:         None (0.0)
+  ambiguous:    ['Studies', 'By']
+
+Query: 'cancer studies by dr holmes'
+  investigator: 'Holmes' (0.95)
+  site:         None (0.0)
+  ambiguous:    []
+
+Query: 'cancer by dr holmes'
+  investigator: 'Holmes' (0.95)
+  site:         None (0.0)
+  ambiguous:    []
