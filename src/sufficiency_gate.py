@@ -17,6 +17,7 @@ import os
 import re
 import sys
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
@@ -365,6 +366,30 @@ def _count_set_filters(filters) -> int:
 
 
 # ---------------------------------------------------------------------------
+# TriggerResult — frozen dataclass (not Pydantic) to avoid circular deps.
+# Returned by find_trigger() so callers can inspect whether parent SNOMED
+# resolution was selected without unpacking a plain tuple.
+# Implements __iter__ and __getitem__ to stay backward-compatible with
+# existing callers that unpack as `trigger, entry = hit` or access `hit[0]`.
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class TriggerResult:
+    trigger: str
+    entry: "AmbiguousEntry"
+    use_parent_snomed: bool = False
+
+    # Backward-compat: yield (trigger, entry) so existing code that does
+    # `fired_trigger, entry = hit` and `hit[0]` continues to work.
+    def __iter__(self):  # type: ignore[override]
+        yield self.trigger
+        yield self.entry
+
+    def __getitem__(self, index: int):  # type: ignore[override]
+        return (self.trigger, self.entry)[index]
+
+
+# ---------------------------------------------------------------------------
 # Pydantic V2 models
 # ---------------------------------------------------------------------------
 
@@ -382,6 +407,10 @@ class AmbiguousEntry(BaseModel):
     options: list[str]              # 3-5 display-ready option strings (e.g. "Lung Cancer")
     override_terms: frozenset[str]  # post-derivation, all lowercase
     max_options: int                # informational; assembler renders up to this many
+    # Optional parent-SNOMED fields — absent from most JSON entries; default to safe values
+    # so existing entries without these keys continue to validate without modification.
+    snomed_parent_code: Optional[str] = None   # SNOMED concept ID of the parent concept
+    allow_parent_search: bool = False           # True → skip clarification, use parent code
 
     @field_validator("options")
     @classmethod
@@ -405,6 +434,7 @@ _KNOWN_REASONS: frozenset[str] = frozenset({
     "metric_without_value",
     "missing_mandatory_term",
     "name_ambiguity",
+    "ok_parent_snomed_used",  # pre-extraction gate passed via parent SNOMED resolution
 })
 
 
@@ -603,7 +633,11 @@ class AmbiguousTermsRegistry:
         manual_overrides: list[str] = data.get("manual_override_terms", [])
         override_terms = self._derive_overrides(trigger, options, manual_overrides)
 
-        # --- Step 4: build frozen model (Pydantic validator re-checks options length) ---
+        # --- Step 4: read optional parent-SNOMED fields (safe defaults if absent) ---
+        snomed_parent_code = data.get("snomed_parent_code", None)
+        allow_parent_search = bool(data.get("allow_parent_search", False))
+
+        # --- Step 5: build frozen model (Pydantic validator re-checks options length) ---
         return AmbiguousEntry(
             trigger=trigger,
             category=data["category"],
@@ -611,6 +645,8 @@ class AmbiguousTermsRegistry:
             options=options,
             override_terms=frozenset(override_terms),
             max_options=int(data.get("max_options", AMBIG_JSON_MAX_OPTIONS)),
+            snomed_parent_code=snomed_parent_code,
+            allow_parent_search=allow_parent_search,
         )
 
     def _derive_overrides(
@@ -678,10 +714,13 @@ class AmbiguousTermsRegistry:
         )
         return final_overrides
 
-    def find_trigger(self, query: str) -> Optional[tuple[str, AmbiguousEntry]]:
-        """Return (trigger, entry) for the FIRST trigger not overridden in the query.
+    def find_trigger(self, query: str) -> Optional[TriggerResult]:
+        """Return TriggerResult for the FIRST trigger not overridden in the query.
 
         Returns None if no trigger fires or all triggers are suppressed by overrides.
+        TriggerResult.use_parent_snomed is True when the entry has allow_parent_search
+        set and no override is present — the pipeline can then skip clarification and
+        resolve directly via the parent SNOMED concept.
 
         Iteration order = _entries insertion order = JSON key order (deterministic).
         Thread-safe: no mutation; _compiled_triggers and _entries are read-only post-init.
@@ -711,7 +750,11 @@ class AmbiguousTermsRegistry:
                     entry.category,
                     # NOT logged: trigger value (it may be a common medical word)
                 )
-                return (trigger, entry)
+                # When allow_parent_search is set, signal the pipeline to skip
+                # clarification and resolve via the parent SNOMED concept instead.
+                if entry.allow_parent_search:
+                    return TriggerResult(trigger=trigger, entry=entry, use_parent_snomed=True)
+                return TriggerResult(trigger=trigger, entry=entry, use_parent_snomed=False)
 
         return None
 
@@ -784,20 +827,36 @@ class SufficiencyGate:
         # Rule 2: registry trigger lookup (with override-term filtering).
         hit = self._registry.find_trigger(canonical_query)
         if hit is not None:
-            trigger, entry = hit
-            logger.info(
-                "SufficiencyGate.evaluate: sufficient=False reason=ambiguous_trigger "
-                "category=%s session_id=%s",
-                entry.category,
-                session.session_id,
-                # NOT logged: trigger value, canonical_query, entry.options
-            )
-            return SufficiencyDecision(
-                sufficient=False,
-                reason="ambiguous_trigger",
-                triggered_by=trigger,
-                matched_entry=entry,
-            )
+            if hit.use_parent_snomed and hit.entry.snomed_parent_code:
+                # Entry has allow_parent_search=True — resolve via the parent SNOMED
+                # concept and proceed to extraction without asking for clarification.
+                logger.info(
+                    "SufficiencyGate.evaluate: sufficient=True "
+                    "reason=ok_parent_snomed_used category=%s session_id=%s",
+                    hit.entry.category,
+                    session.session_id,
+                    # NOT logged: triggered_by value, query text, SNOMED display strings
+                )
+                return SufficiencyDecision(
+                    sufficient=True,
+                    reason="ok_parent_snomed_used",
+                    triggered_by=hit.trigger,
+                    matched_entry=hit.entry,
+                )
+            else:
+                logger.info(
+                    "SufficiencyGate.evaluate: sufficient=False "
+                    "reason=ambiguous_trigger category=%s session_id=%s",
+                    hit.entry.category,
+                    session.session_id,
+                    # NOT logged: trigger value, canonical_query, entry.options
+                )
+                return SufficiencyDecision(
+                    sufficient=False,
+                    reason="ambiguous_trigger",
+                    triggered_by=hit.trigger,
+                    matched_entry=hit.entry,
+                )
 
         # Rule 3: default — sufficient.
         logger.info(

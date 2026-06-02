@@ -2,309 +2,627 @@
   "cancer": {
     "category": "indication",
     "question_template": "Which type of {trigger} are you looking for?",
-    "options": ["Lung Cancer", "Breast Cancer", "Colorectal Cancer", "Lymphoma", "Melanoma"],
+    "options": [
+      "Lung Cancer",
+      "Breast Cancer",
+      "Colorectal Cancer",
+      "Lymphoma",
+      "Melanoma"
+    ],
     "manual_override_terms": [],
-    "max_options": 5
+    "max_options": 5,
+    "snomed_parent_code": "363346000",
+    "allow_parent_search": true
   },
   "tumor": {
     "category": "indication",
     "question_template": "Which type of {trigger} are you looking for?",
-    "options": ["Malignant Neoplasm", "Neoplasm", "Hepatocellular Carcinoma", "Malignant Neoplasm of Brain", "Malignant Neoplasm of Bone"],
+    "options": [
+      "Malignant Neoplasm",
+      "Neoplasm",
+      "Hepatocellular Carcinoma",
+      "Malignant Neoplasm of Brain",
+      "Malignant Neoplasm of Bone"
+    ],
     "manual_override_terms": [],
-    "max_options": 5
+    "max_options": 5,
+    "snomed_parent_code": "108369006",
+    "allow_parent_search": true
   },
   "oncology": {
     "category": "indication",
     "question_template": "Which oncology area are you interested in?",
-    "options": ["Lung Cancer", "Breast Cancer", "Leukemia", "Lymphoma", "Melanoma"],
+    "options": [
+      "Lung Cancer",
+      "Breast Cancer",
+      "Leukemia",
+      "Lymphoma",
+      "Melanoma"
+    ],
     "manual_override_terms": [],
-    "max_options": 5
+    "max_options": 5,
+    "snomed_parent_code": "363346000",
+    "allow_parent_search": true
   },
   "diabetes": {
     "category": "indication",
     "question_template": "Which type of {trigger} are you looking for?",
-    "options": ["Type 1 Diabetes Mellitus", "Type 2 Diabetes Mellitus", "Diabetes Mellitus"],
+    "options": [
+      "Type 1 Diabetes Mellitus",
+      "Type 2 Diabetes Mellitus",
+      "Diabetes Mellitus"
+    ],
     "manual_override_terms": [],
-    "max_options": 3
+    "max_options": 3,
+    "snomed_parent_code": "73211009",
+    "allow_parent_search": true
   },
   "diabetic": {
     "category": "indication",
     "question_template": "Which diabetic condition are you looking for?",
-    "options": ["Type 1 Diabetes Mellitus", "Type 2 Diabetes Mellitus", "Diabetes Mellitus"],
+    "options": [
+      "Type 1 Diabetes Mellitus",
+      "Type 2 Diabetes Mellitus",
+      "Diabetes Mellitus"
+    ],
     "manual_override_terms": [],
-    "max_options": 3
+    "max_options": 3,
+    "snomed_parent_code": "73211009",
+    "allow_parent_search": true
   },
   "heart": {
     "category": "indication",
     "question_template": "Which {trigger} condition are you looking for?",
-    "options": ["Heart Failure", "Atrial Fibrillation", "Myocardial Infarction", "Hypertension", "Coronary Artery Disease"],
+    "options": [
+      "Heart Failure",
+      "Atrial Fibrillation",
+      "Myocardial Infarction",
+      "Hypertension",
+      "Coronary Artery Disease"
+    ],
     "manual_override_terms": [],
-    "max_options": 5
+    "max_options": 5,
+    "snomed_parent_code": "56265001",
+    "allow_parent_search": true
   },
   "cardiac": {
     "category": "indication",
     "question_template": "Which cardiac condition are you looking for?",
-    "options": ["Heart Failure", "Atrial Fibrillation", "Myocardial Infarction", "Coronary Artery Disease", "Heart Disease"],
+    "options": [
+      "Heart Failure",
+      "Atrial Fibrillation",
+      "Myocardial Infarction",
+      "Coronary Artery Disease",
+      "Heart Disease"
+    ],
     "manual_override_terms": [],
-    "max_options": 5
+    "max_options": 5,
+    "snomed_parent_code": "56265001",
+    "allow_parent_search": true
   },
   "cardiovascular": {
     "category": "indication",
     "question_template": "Which cardiovascular condition are you looking for?",
-    "options": ["Heart Failure", "Atrial Fibrillation", "Hypertension", "Coronary Artery Disease", "Heart Disease"],
+    "options": [
+      "Heart Failure",
+      "Atrial Fibrillation",
+      "Hypertension",
+      "Coronary Artery Disease",
+      "Heart Disease"
+    ],
     "manual_override_terms": [],
-    "max_options": 5
+    "max_options": 5,
+    "snomed_parent_code": "49601007",
+    "allow_parent_search": true
   },
   "arthritis": {
     "category": "indication",
     "question_template": "Which type of {trigger} are you looking for?",
-    "options": ["Rheumatoid Arthritis", "Psoriatic Arthritis", "Ankylosing Spondylitis"],
+    "options": [
+      "Rheumatoid Arthritis",
+      "Psoriatic Arthritis",
+      "Ankylosing Spondylitis"
+    ],
     "manual_override_terms": [],
-    "max_options": 3
+    "max_options": 3,
+    "snomed_parent_code": "3723001",
+    "allow_parent_search": true
   },
   "autoimmune": {
     "category": "indication",
     "question_template": "Which {trigger} condition are you looking for?",
-    "options": ["Systemic Lupus Erythematosus", "Rheumatoid Arthritis", "Multiple Sclerosis", "Crohn Disease", "Psoriasis"],
+    "options": [
+      "Systemic Lupus Erythematosus",
+      "Rheumatoid Arthritis",
+      "Multiple Sclerosis",
+      "Crohn Disease",
+      "Psoriasis"
+    ],
     "manual_override_terms": [],
-    "max_options": 5
+    "max_options": 5,
+    "snomed_parent_code": "85828009",
+    "allow_parent_search": true
   },
   "neurological": {
     "category": "indication",
     "question_template": "Which {trigger} condition are you looking for?",
-    "options": ["Alzheimer Disease", "Parkinson Disease", "Multiple Sclerosis", "Epilepsy", "Amyotrophic Lateral Sclerosis"],
+    "options": [
+      "Alzheimer Disease",
+      "Parkinson Disease",
+      "Multiple Sclerosis",
+      "Epilepsy",
+      "Amyotrophic Lateral Sclerosis"
+    ],
     "manual_override_terms": [],
-    "max_options": 5
+    "max_options": 5,
+    "snomed_parent_code": "118940003",
+    "allow_parent_search": true
   },
   "neuro": {
     "category": "indication",
     "question_template": "Which neuro condition are you looking for?",
-    "options": ["Alzheimer Disease", "Parkinson Disease", "Multiple Sclerosis", "Epilepsy", "Amyotrophic Lateral Sclerosis"],
+    "options": [
+      "Alzheimer Disease",
+      "Parkinson Disease",
+      "Multiple Sclerosis",
+      "Epilepsy",
+      "Amyotrophic Lateral Sclerosis"
+    ],
     "manual_override_terms": [],
-    "max_options": 5
+    "max_options": 5,
+    "snomed_parent_code": "118940003",
+    "allow_parent_search": true
   },
   "brain": {
     "category": "indication",
     "question_template": "Which {trigger} condition are you looking for?",
-    "options": ["Alzheimer Disease", "Parkinson Disease", "Epilepsy", "Vascular Dementia", "Mild Cognitive Impairment"],
-    "manual_override_terms": ["brain cancer", "malignant neoplasm of brain"],
-    "max_options": 5
+    "options": [
+      "Alzheimer Disease",
+      "Parkinson Disease",
+      "Epilepsy",
+      "Vascular Dementia",
+      "Mild Cognitive Impairment"
+    ],
+    "manual_override_terms": [
+      "brain cancer",
+      "malignant neoplasm of brain"
+    ],
+    "max_options": 5,
+    "snomed_parent_code": null,
+    "allow_parent_search": false
   },
   "liver": {
     "category": "indication",
     "question_template": "Which {trigger} condition are you looking for?",
-    "options": ["Hepatitis B", "Hepatitis C", "Hepatocellular Carcinoma"],
+    "options": [
+      "Hepatitis B",
+      "Hepatitis C",
+      "Hepatocellular Carcinoma"
+    ],
     "manual_override_terms": [],
-    "max_options": 3
+    "max_options": 3,
+    "snomed_parent_code": "235856003",
+    "allow_parent_search": true
   },
   "hepatic": {
     "category": "indication",
     "question_template": "Which hepatic condition are you looking for?",
-    "options": ["Hepatitis B", "Hepatitis C", "Hepatocellular Carcinoma"],
+    "options": [
+      "Hepatitis B",
+      "Hepatitis C",
+      "Hepatocellular Carcinoma"
+    ],
     "manual_override_terms": [],
-    "max_options": 3
+    "max_options": 3,
+    "snomed_parent_code": "235856003",
+    "allow_parent_search": true
   },
   "pulmonary": {
     "category": "indication",
     "question_template": "Which {trigger} condition are you looking for?",
-    "options": ["Chronic Obstructive Pulmonary Disease", "Asthma", "Idiopathic Pulmonary Fibrosis", "Lung Disorder"],
+    "options": [
+      "Chronic Obstructive Pulmonary Disease",
+      "Asthma",
+      "Idiopathic Pulmonary Fibrosis",
+      "Lung Disorder"
+    ],
     "manual_override_terms": [],
-    "max_options": 4
+    "max_options": 4,
+    "snomed_parent_code": "19829001",
+    "allow_parent_search": true
   },
   "depression": {
     "category": "indication",
     "question_template": "Which {trigger}-related condition are you looking for?",
-    "options": ["Alzheimer Disease", "Mild Cognitive Impairment", "Multiple Sclerosis"],
+    "options": [
+      "Major Depressive Disorder",
+      "Bipolar Disorder",
+      "Treatment Resistant Depression",
+      "Postpartum Depression",
+      "Persistent Depressive Disorder"
+    ],
     "manual_override_terms": [],
-    "max_options": 3
+    "max_options": 5,
+    "snomed_parent_code": "35489007",
+    "allow_parent_search": true
   },
   "infection": {
     "category": "indication",
     "question_template": "Which {trigger} are you looking for?",
-    "options": ["Human Immunodeficiency Virus Infection", "Hepatitis B", "Tuberculosis", "Covid-19"],
+    "options": [
+      "Human Immunodeficiency Virus Infection",
+      "Hepatitis B",
+      "Tuberculosis",
+      "Covid-19"
+    ],
     "manual_override_terms": [],
-    "max_options": 4
+    "max_options": 4,
+    "snomed_parent_code": "40733004",
+    "allow_parent_search": true
   },
   "bone": {
     "category": "indication",
     "question_template": "Which {trigger} condition are you looking for?",
-    "options": ["Malignant Neoplasm of Bone", "Rheumatoid Arthritis", "Ankylosing Spondylitis"],
+    "options": [
+      "Malignant Neoplasm of Bone",
+      "Rheumatoid Arthritis",
+      "Ankylosing Spondylitis"
+    ],
     "manual_override_terms": [],
-    "max_options": 3
+    "max_options": 3,
+    "snomed_parent_code": null,
+    "allow_parent_search": false
   },
   "joint": {
     "category": "indication",
     "question_template": "Which {trigger} condition are you looking for?",
-    "options": ["Rheumatoid Arthritis", "Psoriatic Arthritis", "Ankylosing Spondylitis"],
+    "options": [
+      "Rheumatoid Arthritis",
+      "Psoriatic Arthritis",
+      "Ankylosing Spondylitis"
+    ],
     "manual_override_terms": [],
-    "max_options": 3
+    "max_options": 3,
+    "snomed_parent_code": null,
+    "allow_parent_search": false
   },
   "musculoskeletal": {
     "category": "indication",
     "question_template": "Which {trigger} condition are you looking for?",
-    "options": ["Rheumatoid Arthritis", "Psoriatic Arthritis", "Ankylosing Spondylitis", "Malignant Neoplasm of Bone"],
+    "options": [
+      "Rheumatoid Arthritis",
+      "Psoriatic Arthritis",
+      "Ankylosing Spondylitis",
+      "Malignant Neoplasm of Bone"
+    ],
     "manual_override_terms": [],
-    "max_options": 4
+    "max_options": 4,
+    "snomed_parent_code": "928000",
+    "allow_parent_search": true
   },
   "muscle": {
     "category": "indication",
     "question_template": "Which muscle or movement-related condition are you looking for?",
-    "options": ["Cardiomyopathy", "Amyotrophic Lateral Sclerosis", "Rheumatoid Arthritis"],
+    "options": [
+      "Cardiomyopathy",
+      "Amyotrophic Lateral Sclerosis",
+      "Rheumatoid Arthritis"
+    ],
     "manual_override_terms": [],
-    "max_options": 3
+    "max_options": 3,
+    "snomed_parent_code": null,
+    "allow_parent_search": false
   },
   "skin": {
     "category": "indication",
     "question_template": "Which {trigger} condition are you looking for?",
-    "options": ["Malignant Melanoma", "Psoriasis", "Psoriatic Arthritis"],
+    "options": [
+      "Malignant Melanoma",
+      "Psoriasis",
+      "Psoriatic Arthritis"
+    ],
     "manual_override_terms": [],
-    "max_options": 3
+    "max_options": 3,
+    "snomed_parent_code": null,
+    "allow_parent_search": false
   },
   "dermatologic": {
     "category": "indication",
     "question_template": "Which {trigger} condition are you looking for?",
-    "options": ["Malignant Melanoma", "Psoriasis", "Psoriatic Arthritis"],
+    "options": [
+      "Malignant Melanoma",
+      "Psoriasis",
+      "Psoriatic Arthritis"
+    ],
     "manual_override_terms": [],
-    "max_options": 3
+    "max_options": 3,
+    "snomed_parent_code": null,
+    "allow_parent_search": false
   },
   "cutaneous": {
     "category": "indication",
     "question_template": "Which {trigger} condition are you looking for?",
-    "options": ["Malignant Melanoma", "Psoriasis", "Psoriatic Arthritis"],
+    "options": [
+      "Malignant Melanoma",
+      "Psoriasis",
+      "Psoriatic Arthritis"
+    ],
     "manual_override_terms": [],
-    "max_options": 3
+    "max_options": 3,
+    "snomed_parent_code": null,
+    "allow_parent_search": false
   },
   "gastrointestinal": {
     "category": "indication",
     "question_template": "Which {trigger} condition are you looking for?",
-    "options": ["Inflammatory Bowel Disease", "Crohn Disease", "Ulcerative Colitis", "Malignant Neoplasm of Colon", "Gastroesophageal Reflux Disease"],
+    "options": [
+      "Inflammatory Bowel Disease",
+      "Crohn Disease",
+      "Ulcerative Colitis",
+      "Malignant Neoplasm of Colon",
+      "Gastroesophageal Reflux Disease"
+    ],
     "manual_override_terms": [],
-    "max_options": 5
+    "max_options": 5,
+    "snomed_parent_code": "53619000",
+    "allow_parent_search": true
   },
   "bowel": {
     "category": "indication",
     "question_template": "Which {trigger} condition are you looking for?",
-    "options": ["Inflammatory Bowel Disease", "Crohn Disease", "Ulcerative Colitis", "Malignant Neoplasm of Colon"],
+    "options": [
+      "Inflammatory Bowel Disease",
+      "Crohn Disease",
+      "Ulcerative Colitis",
+      "Malignant Neoplasm of Colon"
+    ],
     "manual_override_terms": [],
-    "max_options": 4
+    "max_options": 4,
+    "snomed_parent_code": "53619000",
+    "allow_parent_search": true
   },
   "intestinal": {
     "category": "indication",
     "question_template": "Which {trigger} condition are you looking for?",
-    "options": ["Inflammatory Bowel Disease", "Crohn Disease", "Ulcerative Colitis"],
+    "options": [
+      "Inflammatory Bowel Disease",
+      "Crohn Disease",
+      "Ulcerative Colitis"
+    ],
     "manual_override_terms": [],
-    "max_options": 3
+    "max_options": 3,
+    "snomed_parent_code": "53619000",
+    "allow_parent_search": true
   },
   "blood": {
     "category": "indication",
     "question_template": "Which blood-related condition are you looking for?",
-    "options": ["Leukemia", "Malignant Lymphoma", "Multiple Myeloma", "Thrombosis", "Deep Vein Thrombosis"],
-    "manual_override_terms": ["blood pressure", "blood sugar", "blood glucose", "blood test", "blood draw", "blood specimen", "blood clot"],
-    "max_options": 5
+    "options": [
+      "Leukemia",
+      "Malignant Lymphoma",
+      "Multiple Myeloma",
+      "Thrombosis",
+      "Deep Vein Thrombosis"
+    ],
+    "manual_override_terms": [
+      "blood pressure",
+      "blood sugar",
+      "blood glucose",
+      "blood test",
+      "blood draw",
+      "blood specimen",
+      "blood clot"
+    ],
+    "max_options": 5,
+    "snomed_parent_code": null,
+    "allow_parent_search": false
   },
   "hematologic": {
     "category": "indication",
     "question_template": "Which {trigger} condition are you looking for?",
-    "options": ["Leukemia", "Malignant Lymphoma", "Multiple Myeloma", "Thrombosis", "Deep Vein Thrombosis"],
+    "options": [
+      "Leukemia",
+      "Malignant Lymphoma",
+      "Multiple Myeloma",
+      "Thrombosis",
+      "Deep Vein Thrombosis"
+    ],
     "manual_override_terms": [],
-    "max_options": 5
+    "max_options": 5,
+    "snomed_parent_code": "34093004",
+    "allow_parent_search": true
   },
   "hematology": {
     "category": "indication",
     "question_template": "Which {trigger} condition are you looking for?",
-    "options": ["Leukemia", "Malignant Lymphoma", "Multiple Myeloma", "Thrombosis", "Deep Vein Thrombosis"],
+    "options": [
+      "Leukemia",
+      "Malignant Lymphoma",
+      "Multiple Myeloma",
+      "Thrombosis",
+      "Deep Vein Thrombosis"
+    ],
     "manual_override_terms": [],
-    "max_options": 5
+    "max_options": 5,
+    "snomed_parent_code": "34093004",
+    "allow_parent_search": true
   },
   "lymphatic": {
     "category": "indication",
     "question_template": "Which {trigger} condition are you looking for?",
-    "options": ["Malignant Lymphoma", "Non-Hodgkin Lymphoma", "Lymph Node Procedure"],
+    "options": [
+      "Malignant Lymphoma",
+      "Non-Hodgkin Lymphoma",
+      "Lymph Node Procedure"
+    ],
     "manual_override_terms": [],
-    "max_options": 3
+    "max_options": 3,
+    "snomed_parent_code": "234093009",
+    "allow_parent_search": true
   },
   "lymphoid": {
     "category": "indication",
     "question_template": "Which {trigger} condition are you looking for?",
-    "options": ["Malignant Lymphoma", "Non-Hodgkin Lymphoma", "Lymph Node Procedure"],
+    "options": [
+      "Malignant Lymphoma",
+      "Non-Hodgkin Lymphoma",
+      "Lymph Node Procedure"
+    ],
     "manual_override_terms": [],
-    "max_options": 3
+    "max_options": 3,
+    "snomed_parent_code": "234093009",
+    "allow_parent_search": true
   },
   "vascular": {
     "category": "indication",
     "question_template": "Which {trigger} condition are you looking for?",
-    "options": ["Hypertension", "Coronary Artery Disease", "Peripheral Arterial Disease", "Deep Vein Thrombosis", "Thrombosis"],
+    "options": [
+      "Hypertension",
+      "Coronary Artery Disease",
+      "Peripheral Arterial Disease",
+      "Deep Vein Thrombosis",
+      "Thrombosis"
+    ],
     "manual_override_terms": [],
-    "max_options": 5
+    "max_options": 5,
+    "snomed_parent_code": "27550009",
+    "allow_parent_search": true
   },
   "vessel": {
     "category": "indication",
     "question_template": "Which blood-{trigger} condition are you looking for?",
-    "options": ["Hypertension", "Coronary Artery Disease", "Peripheral Arterial Disease", "Deep Vein Thrombosis", "Thrombosis"],
+    "options": [
+      "Hypertension",
+      "Coronary Artery Disease",
+      "Peripheral Arterial Disease",
+      "Deep Vein Thrombosis",
+      "Thrombosis"
+    ],
     "manual_override_terms": [],
-    "max_options": 5
+    "max_options": 5,
+    "snomed_parent_code": null,
+    "allow_parent_search": false
   },
   "circulatory": {
     "category": "indication",
     "question_template": "Which {trigger} condition are you looking for?",
-    "options": ["Hypertension", "Coronary Artery Disease", "Heart Disease", "Peripheral Arterial Disease", "Thrombosis"],
+    "options": [
+      "Hypertension",
+      "Coronary Artery Disease",
+      "Heart Disease",
+      "Peripheral Arterial Disease",
+      "Thrombosis"
+    ],
     "manual_override_terms": [],
-    "max_options": 5
+    "max_options": 5,
+    "snomed_parent_code": "49601007",
+    "allow_parent_search": true
   },
   "head and neck": {
     "category": "indication",
     "question_template": "Which {trigger} condition are you looking for?",
-    "options": ["Malignant Neoplasm of Brain", "Thyroid Cancer", "Malignant Neoplasm of Esophagus"],
+    "options": [
+      "Malignant Neoplasm of Brain",
+      "Thyroid Cancer",
+      "Malignant Neoplasm of Esophagus"
+    ],
     "manual_override_terms": [],
-    "max_options": 3
+    "max_options": 3,
+    "snomed_parent_code": null,
+    "allow_parent_search": false
   },
   "thoracic": {
     "category": "indication",
     "question_template": "Which {trigger} condition are you looking for?",
-    "options": ["Heart Disease", "Lung Disorder", "Coronary Artery Disease", "Pulmonary Embolism"],
+    "options": [
+      "Heart Disease",
+      "Lung Disorder",
+      "Coronary Artery Disease",
+      "Pulmonary Embolism"
+    ],
     "manual_override_terms": [],
-    "max_options": 4
+    "max_options": 4,
+    "snomed_parent_code": "19829001",
+    "allow_parent_search": true
   },
   "abdominal": {
     "category": "indication",
     "question_template": "Which {trigger} condition are you looking for?",
-    "options": ["Malignant Neoplasm of Colon", "Malignant Neoplasm of Stomach", "Malignant Neoplasm of Pancreas", "Hepatocellular Carcinoma"],
+    "options": [
+      "Malignant Neoplasm of Colon",
+      "Malignant Neoplasm of Stomach",
+      "Malignant Neoplasm of Pancreas",
+      "Hepatocellular Carcinoma"
+    ],
     "manual_override_terms": [],
-    "max_options": 4
+    "max_options": 4,
+    "snomed_parent_code": "53619000",
+    "allow_parent_search": true
   },
   "abdomen": {
     "category": "indication",
     "question_template": "Which abdominal condition are you looking for?",
-    "options": ["Malignant Neoplasm of Colon", "Malignant Neoplasm of Stomach", "Malignant Neoplasm of Pancreas", "Hepatocellular Carcinoma"],
+    "options": [
+      "Malignant Neoplasm of Colon",
+      "Malignant Neoplasm of Stomach",
+      "Malignant Neoplasm of Pancreas",
+      "Hepatocellular Carcinoma"
+    ],
     "manual_override_terms": [],
-    "max_options": 4
+    "max_options": 4,
+    "snomed_parent_code": "53619000",
+    "allow_parent_search": true
   },
   "extremity": {
     "category": "indication",
     "question_template": "Which {trigger} condition are you looking for?",
-    "options": ["Deep Vein Thrombosis", "Peripheral Arterial Disease", "Thrombosis"],
+    "options": [
+      "Deep Vein Thrombosis",
+      "Peripheral Arterial Disease",
+      "Thrombosis"
+    ],
     "manual_override_terms": [],
-    "max_options": 3
+    "max_options": 3,
+    "snomed_parent_code": null,
+    "allow_parent_search": false
   },
   "extremities": {
     "category": "indication",
     "question_template": "Which extremity condition are you looking for?",
-    "options": ["Deep Vein Thrombosis", "Peripheral Arterial Disease", "Thrombosis"],
+    "options": [
+      "Deep Vein Thrombosis",
+      "Peripheral Arterial Disease",
+      "Thrombosis"
+    ],
     "manual_override_terms": [],
-    "max_options": 3
+    "max_options": 3,
+    "snomed_parent_code": null,
+    "allow_parent_search": false
   },
   "limb": {
     "category": "indication",
     "question_template": "Which {trigger} condition are you looking for?",
-    "options": ["Deep Vein Thrombosis", "Peripheral Arterial Disease", "Thrombosis"],
+    "options": [
+      "Deep Vein Thrombosis",
+      "Peripheral Arterial Disease",
+      "Thrombosis"
+    ],
     "manual_override_terms": [],
-    "max_options": 3
+    "max_options": 3,
+    "snomed_parent_code": null,
+    "allow_parent_search": false
   },
   "limbs": {
     "category": "indication",
     "question_template": "Which limb condition are you looking for?",
-    "options": ["Deep Vein Thrombosis", "Peripheral Arterial Disease", "Thrombosis"],
+    "options": [
+      "Deep Vein Thrombosis",
+      "Peripheral Arterial Disease",
+      "Thrombosis"
+    ],
     "manual_override_terms": [],
-    "max_options": 3
+    "max_options": 3,
+    "snomed_parent_code": null,
+    "allow_parent_search": false
   }
 }

@@ -64,6 +64,7 @@ LOG_PATH_SEARCH                    = "search"
 LOG_PATH_EMBEDDING_AMBIGUITY       = "embedding_ambiguity_clarification"
 LOG_PATH_METRIC_AMBIGUITY          = "metric_ambiguity_clarification"
 LOG_PATH_PREFLIGHT_REJECTION       = "preflight_rejection"
+LOG_PATH_PARENT_SNOMED_RESOLVED    = "parent_snomed_resolved"
 
 
 # ---------------------------------------------------------------------------
@@ -254,6 +255,17 @@ class NLPPipeline:
             )
             return frozenset()
 
+    @property
+    def snomed_strategy(self) -> SNOMEDSearchStrategy:
+        """Public accessor for the active SNOMED strategy.
+
+        Allows AutocompleteOrchestrator to reuse the already-initialized
+        strategy at startup without re-instantiating it, avoiding doubled
+        startup time and RAM usage. Keeps private attribute access contained
+        within this class.
+        """
+        return self._snomed
+
     # -------------------------------------------------------------------------
     # Primary entry point
     # -------------------------------------------------------------------------
@@ -323,6 +335,38 @@ class NLPPipeline:
                 metric_match_count=0, metric_resolved_count=0,
             )
             return clarification
+        elif decision.reason == "ok_parent_snomed_used":
+            # Parent-SNOMED shortcut: inject the parent concept as a pre-resolved
+            # SNOMED match so downstream extraction starts with it, skipping
+            # the clarification round entirely.
+            # original_text and span are set to the trigger string / (0,1) sentinel
+            # because this match is synthesised server-side (not found in query text).
+            _trigger_text = decision.matched_entry.trigger
+            parent_match = SNOMEDMatch(
+                code=decision.matched_entry.snomed_parent_code,
+                display=_trigger_text,
+                confidence=0.90,
+                match_type="exact",
+                original_text=_trigger_text,
+                span=(0, max(1, len(_trigger_text))),
+                negated=False,
+            )
+            logger.info(
+                "pipeline: path=%s snomed_parent_code=%s session_id=%s",
+                LOG_PATH_PARENT_SNOMED_RESOLVED,
+                decision.matched_entry.snomed_parent_code,
+                session.session_id,
+                # NOT logged: display, triggered_by value, query text
+            )
+            return self._run_extraction_path(
+                canonical=canonical,
+                user_text=preprocessed.text,
+                decision=decision,
+                session=session,
+                start=start,
+                pre_resolved_snomed=[parent_match],
+            )
+        # else: fall through to normal extraction path (sufficient=True, not parent-SNOMED)
 
         # ── Steps 4-10: Extraction, negation, intent gate, geo, assembly ──────
         return self._run_extraction_path(canonical, preprocessed.text, decision, session, start)
@@ -381,6 +425,7 @@ class NLPPipeline:
         session: ConversationSession,
         start: float,
         metric_matches: Optional[list[MetricMatch]] = None,
+        pre_resolved_snomed: Optional[list[SNOMEDMatch]] = None,
     ) -> Union[NLPOutput, ClarificationOutput]:
         """Run steps 3b-10: metric resolution, parallel extraction, negation,
         clinical-intent gate, post-extraction safety check, metric gate,
@@ -491,6 +536,15 @@ class NLPPipeline:
                 type(exc).__name__, session.session_id,
             )
             raise PipelineError("strategy_unavailable") from exc
+
+        # Inject any pre-resolved SNOMED matches (e.g., from the parent-SNOMED path)
+        # before negation annotation. De-duplicate by concept code so the parent match
+        # doesn't appear twice if the SNOMED strategy already found the same code.
+        if pre_resolved_snomed:
+            existing_codes = {m.code for m in snomed_raw}
+            for parent_match in pre_resolved_snomed:
+                if parent_match.code not in existing_codes:
+                    snomed_raw = [parent_match] + snomed_raw
 
         # ── Step 5: Negation annotation ───────────────────────────────────────
         snomed_matches: list[SNOMEDMatch] = self._negation.annotate(canonical, snomed_raw)
