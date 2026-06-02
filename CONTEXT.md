@@ -143,6 +143,34 @@ See `README.md` for a high-level overview. Project root contains `api.py` (FastA
 
 ## Post-Build Changes Log
 
+### 2026-06-01 — Autocomplete endpoint (GET /v1/autocomplete)
+
+**What:** Added a Google-style clinical query autocomplete feature. New `GET /v1/autocomplete?q=<prefix>&limit=<1-10>` endpoint returns up to 7 ranked suggestions across SNOMED terms, geo (cities/states/regions), and phases. Activates at ≥3 chars (server-enforced), typo-tolerant via rapidfuzz, lay-term aware (e.g. "heart attack" → "Myocardial Infarction"). Reuses the already-initialized SNOMED strategy's existing data structures — zero new ML models or indexes.
+
+**Why:** Companion to the 2026-06-01 parent-SNOMED change: rather than only reacting to ambiguous terms with clarification, autocomplete proactively guides users toward specific terms as they type.
+
+**Architecture:** Three tiers run in parallel via `asyncio.gather` + `run_in_executor`: Tier 1 prefix/exact (dict scan over `_exact_index`/`_synonym_index`/`_alias_dict` + geo + phases, <50ms), Tier 2 rapidfuzz WRatio with first-char prefilter (<300ms), Tier 3 semantic via `strategy.get_top_neighbors()` with numpy matmul fallback (<200ms). Results flow through dedup → score → hierarchy collapse → top-7. `QuerySegmenter` separates committed context tokens (Phase 3, geo) from the active prefix; `completion` is assembled downstream in `_format_suggestion`, keeping `AutocompleteSuggestion` a pure frozen dataclass.
+
+**Files touched:**
+- `src/autocomplete/` (new package) — `segmenter.py` (context vs. active-prefix split), `index.py` (`AutocompleteIndex` 3-tier search + `AutocompleteSuggestion` frozen dataclass), `ranker.py` (dedup, tier/category/specificity/context scoring, hierarchy collapse), `cache.py` (dict store, SHA-256 keys, FIFO eviction at 10k), `orchestrator.py` (`AutocompleteOrchestrator`, 50ms timing-oracle floor via `asyncio.sleep`, injection gate, parallel tier coordination).
+- `src/pipeline.py` — added `snomed_strategy` property so the orchestrator reuses the initialized strategy (no second `get_strategy()` → no doubled startup/RAM).
+- `api.py` — 7 changes: imports (incl. `Query` — required by the endpoint, omitted from the original brief); `autocomplete` global; lifespan init with graceful `None`-on-failure (→ 503); per-IP rate limiter (30 req / 10s rolling window, `_check_autocomplete_rate`); `AutocompleteSuggestionItem`/`AutocompleteResponse` models; `GET /v1/autocomplete` route (X-API-Key via existing middleware, no middleware change); docstring route table entry.
+- `requirements.txt` — added only `pytest-asyncio>=0.24.0`.
+- `tests/autocomplete/` (new) — `test_segmenter.py`, `test_index.py`, `test_ranker.py`, `test_orchestrator.py`, `test_autocomplete_endpoint.py` (42 tests).
+
+**Critical constraints honoured:**
+- HIPAA: new log lines emit only `prefix_length`, `tier_used`, `suggestion_count`, `latency_ms`, error type names, and a 16-bit IP hash — never query text, display strings, or SNOMED codes.
+- No new ML models/indexes; existing strategy data structures referenced, not duplicated. No new runtime dependency (only the `pytest-asyncio` dev dep).
+- `AutocompleteSuggestion` is frozen; `completion` assembled in `_format_suggestion` (no `object.__setattr__`/`replace`). `asyncio.get_running_loop()` (not deprecated `get_event_loop`). 50ms floor uses `asyncio.sleep`. Geo path uses `Path(__file__).parent`. Existing routes/middleware/models unchanged.
+
+**Two deviations from the brief (both required for the brief's own success criteria):**
+1. `ranker.py` hierarchy collapse compares **raw_score** proximity (window unchanged at 0.05), not the display-boosted ranking score. The brief's own `test_hierarchy_collapse_removes_parent` fails otherwise — a child's specificity boost widened the computed-score gap past 0.05, sparing the parent, which inverts the intent.
+2. `test_503_when_not_initialized` sets `autocomplete = None` **after** `TestClient` startup. `lifespan` succeeds in this environment and re-initializes it, so the brief's pre-startup patch never exercised the 503 path. Endpoint code was already correct.
+
+**Test status after change:** Autocomplete suite 42 passed / 0 failed. Full regression (excluding the live-DB `tests/test_pgvector_cascade.py` and the standalone `qa_testing/` harness) 368 passed / 0 failed / 0 skipped.
+
+---
+
 ### 2026-06-01 — Parent SNOMED resolution + depression fix
 
 **What:** Ambiguous terms that have a valid broad SNOMED parent concept now proceed as a search result instead of always forcing clarification. A new `TriggerResult` frozen dataclass replaces the bare tuple return of `find_trigger()`. New reason `"ok_parent_snomed_used"` added to `_KNOWN_REASONS`. The "depression" entry's options were corrected from wrong neurological conditions to clinically appropriate psychiatric options.

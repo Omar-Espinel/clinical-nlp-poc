@@ -255,6 +255,17 @@ class NLPPipeline:
             )
             return frozenset()
 
+    @property
+    def snomed_strategy(self) -> SNOMEDSearchStrategy:
+        """Public accessor for the active SNOMED strategy.
+
+        Allows AutocompleteOrchestrator to reuse the already-initialized
+        strategy at startup without re-instantiating it, avoiding doubled
+        startup time and RAM usage. Keeps private attribute access contained
+        within this class.
+        """
+        return self._snomed
+
     # -------------------------------------------------------------------------
     # Primary entry point
     # -------------------------------------------------------------------------
