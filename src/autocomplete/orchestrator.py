@@ -45,11 +45,27 @@ class AutocompleteOrchestrator:
             | frozenset(geo_data.get("states", {}).keys())
             | frozenset(geo_data.get("regions", {}).keys())
         )
-        self._segmenter = QuerySegmenter(geo_keys)
+
+        # Extract SNOMED preferred terms from the strategy's existing exact
+        # index so the segmenter can recognise committed SNOMED context in
+        # mid-query positions. These are already in memory — no new index,
+        # no new model, no duplication.
+        # HIPAA: these are public SNOMED display strings, not user content.
+        exact_index: dict = getattr(strategy, "_exact_index", {})
+        snomed_known_terms: frozenset[str] = frozenset(
+            record.get("preferred_term", "").lower().strip()
+            for record in exact_index.values()
+            if record.get("preferred_term")
+        )
+
+        self._segmenter = QuerySegmenter(
+            geo_keys, snomed_known_terms=snomed_known_terms
+        )
 
         logger.info(
-            "AutocompleteOrchestrator initialized: geo_keys=%d semantic=%s",
+            "AutocompleteOrchestrator initialized: geo_keys=%d snomed_terms=%d semantic=%s",
             len(geo_keys),
+            len(snomed_known_terms),
             getattr(strategy, "semantic_available", "unknown"),
         )
 
@@ -99,15 +115,25 @@ class AutocompleteOrchestrator:
         if not segment.active_prefix:
             return _empty
 
-        context_prefix = " ".join(segment.context_tokens)
+        # Use the verbatim raw slice of the original query that precedes the
+        # active prefix. This preserves the user's exact casing, punctuation,
+        # and connector words (", phase 3 in ") in the assembled completion.
+        # Never logged — only passed to _format_suggestion for response assembly.
+        context_prefix = segment.committed_prefix_raw
+
+        # Normalize the active prefix: detect compound phases and strip
+        # noise words before sending to the search tiers.
+        normalized = self._segmenter.normalize_active_prefix(segment.active_prefix)
 
         loop = asyncio.get_running_loop()
         tier_used_parts: list[str] = []
         all_suggestions: list[AutocompleteSuggestion] = []
 
-        tier1_fut = loop.run_in_executor(None, self._index.prefix_search, segment.active_prefix, limit * 3)
-        tier2_fut = loop.run_in_executor(None, self._index.fuzzy_search, segment.active_prefix, limit * 3)
-        tier3_fut = loop.run_in_executor(None, self._index.semantic_search, segment.active_prefix, limit * 3)
+        # Use normalized.search_text for tier search so noise-stripped and
+        # compound-reduced text reaches the indexes, not the raw active prefix.
+        tier1_fut = loop.run_in_executor(None, self._index.prefix_search, normalized.search_text, limit * 3)
+        tier2_fut = loop.run_in_executor(None, self._index.fuzzy_search, normalized.search_text, limit * 3)
+        tier3_fut = loop.run_in_executor(None, self._index.semantic_search, normalized.search_text, limit * 3)
 
         done, pending = await asyncio.wait(
             {tier1_fut, tier2_fut, tier3_fut},
@@ -140,11 +166,49 @@ class AutocompleteOrchestrator:
         await _enforce_min_response(start)
         elapsed_ms = int((time.perf_counter() - start) * 1000)
 
-        # HIPAA: only prefix_length, tier_used, suggestion_count, latency_ms — never query text.
+        # HIPAA: only lengths, tier label, count, latency — never text content.
         logger.info(
-            "AutocompleteOrchestrator.run: prefix_length=%d tier_used=%s suggestion_count=%d latency_ms=%d",
+            "AutocompleteOrchestrator.run: prefix_length=%d tier_used=%s "
+            "suggestion_count=%d latency_ms=%d is_compound_phase=%s",
             len(stripped), tier_used, len(ranked), elapsed_ms,
+            normalized.is_compound_phase,
         )
+
+        # For compound phase queries expand each ranked suggestion into one
+        # completion per phase component. Deduplication is applied after
+        # expansion by display string to prevent duplicates when ranked
+        # suggestions happen to be phase terms already.
+        if normalized.is_compound_phase and normalized.compound_phases:
+            expanded: list[dict] = []
+            seen_completions: set[str] = set()
+            for phase in normalized.compound_phases:
+                phase_suggestion = AutocompleteSuggestion(
+                    display=phase,
+                    snomed_code=None,
+                    category="phase",
+                    raw_score=1.0,
+                    match_type="prefix",
+                )
+                fmt = _format_suggestion(phase_suggestion, context_prefix=context_prefix)
+                if fmt["completion"] not in seen_completions:
+                    seen_completions.add(fmt["completion"])
+                    expanded.append(fmt)
+            # Append any non-phase ranked suggestions after the phase expansions,
+            # up to the original limit.
+            for s in ranked:
+                if len(expanded) >= limit:
+                    break
+                if s.category != "phase":
+                    fmt = _format_suggestion(s, context_prefix=context_prefix)
+                    if fmt["completion"] not in seen_completions:
+                        seen_completions.add(fmt["completion"])
+                        expanded.append(fmt)
+            return {
+                "suggestions": expanded,
+                "processing_time_ms": max(elapsed_ms, int(_MIN_RESPONSE_SECONDS * 1000)),
+                "tier_used": tier_used,
+                "fallback_active": False,
+            }
 
         return {
             "suggestions": [_format_suggestion(s, context_prefix=context_prefix) for s in ranked],
@@ -183,7 +247,10 @@ def _format_suggestion(s: AutocompleteSuggestion, context_prefix: str) -> dict:
     HIPAA: this dict is sent to the API consumer only, never logged.
     """
     display_titled = s.display.title()
-    completion = f"{context_prefix} {display_titled}".strip() if context_prefix else display_titled
+    # context_prefix is a verbatim query slice that already carries its own
+    # trailing delimiter/whitespace (e.g. ", " or " in "); rstrip then rejoin
+    # with exactly one space so the completion never has a double space.
+    completion = f"{context_prefix.rstrip()} {display_titled}" if context_prefix else display_titled
     return {
         "display":    display_titled,
         "completion": completion,

@@ -79,3 +79,28 @@ def test_specificity_boost_long_prefix():
     segment = _make_segment(prefix="type 2 diabetes")
     result = rank_and_trim([generic, specific], segment, limit=7)
     assert result[0].display == "type 2 diabetes mellitus"
+
+
+def test_context_bonus_snomed_boosts_phase():
+    from src.autocomplete.ranker import _context_bonus
+    assert _context_bonus("phase", [ContextType.SNOMED]) == 1.15
+
+
+def test_context_bonus_snomed_boosts_geo():
+    from src.autocomplete.ranker import _context_bonus
+    assert _context_bonus("geo_city", [ContextType.SNOMED]) == 1.10
+
+
+def test_context_bonus_snomed_does_not_boost_snomed():
+    from src.autocomplete.ranker import _context_bonus
+    assert _context_bonus("snomed", [ContextType.SNOMED]) == 1.0
+
+
+def test_context_bonus_phase_context_boosts_phase():
+    from src.autocomplete.ranker import _context_bonus
+    assert _context_bonus("phase", [ContextType.PHASE]) == 1.05
+
+
+def test_context_bonus_no_context_returns_one():
+    from src.autocomplete.ranker import _context_bonus
+    assert _context_bonus("snomed", []) == 1.0

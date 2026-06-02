@@ -6,6 +6,8 @@ if TYPE_CHECKING:
     from src.autocomplete.index import AutocompleteSuggestion
     from src.autocomplete.segmenter import SegmentResult
 
+from src.autocomplete.segmenter import ContextType
+
 _TIER_WEIGHTS: dict[str, float] = {
     "prefix": 1.00,
     "alias": 0.93,
@@ -29,7 +31,18 @@ def _specificity_boost(display: str, prefix: str) -> float:
 
 
 def _context_bonus(category: str, context_types: list) -> float:
-    from src.autocomplete.segmenter import ContextType
+    """Return a score multiplier based on what context is already committed.
+
+    When the user has already typed a SNOMED term, phase and geo suggestions
+    are boosted because they are the logical next filter. When phase or geo
+    context is already present, suggestions of the same category get a
+    smaller boost (rare but valid — e.g. adding a second geo refinement).
+    """
+    if ContextType.SNOMED in context_types:
+        if category == "phase":
+            return 1.15
+        if category.startswith("geo"):
+            return 1.10
     if ContextType.PHASE in context_types and category == "phase":
         return 1.05
     if ContextType.GEO in context_types and category.startswith("geo"):

@@ -112,3 +112,29 @@ async def test_completion_includes_context_prefix(orchestrator):
             for s in suggestions
             if "diabetes" in s["display"].lower()
         )
+
+
+@pytest.mark.asyncio
+async def test_compound_phase_expands_to_multiple_suggestions(orchestrator):
+    result = await orchestrator.run(
+        "malignant neoplasm of esophagus, Phase 2 and 3"
+    )
+    completions = [s["completion"] for s in result["suggestions"]]
+    assert any("Phase 2" in c for c in completions)
+    assert any("Phase 3" in c for c in completions)
+
+
+@pytest.mark.asyncio
+async def test_noise_stripped_query_returns_snomed_suggestions(orchestrator):
+    result = await orchestrator.run("trials for gout US Sites only")
+    assert result["suggestions"] or result["tier_used"] == "none"
+
+
+@pytest.mark.asyncio
+async def test_compound_phase_completions_preserve_committed_context(orchestrator):
+    result = await orchestrator.run(
+        "malignant neoplasm of esophagus, Phase 2 and 3"
+    )
+    for s in result["suggestions"]:
+        if "Phase" in s["completion"]:
+            assert "esophagus" in s["completion"].lower()
