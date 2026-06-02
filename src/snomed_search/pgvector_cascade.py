@@ -87,6 +87,14 @@ class PgVectorCascadeStrategy:
                 "BIOPORTAL_API_KEY missing or shorter than 16 chars"
             )
 
+        # Lightweight in-memory maps for the autocomplete Tier-1/Tier-2 prefix &
+        # fuzzy scan and Tier-3 gate. The 90k pgvector SQL search path does NOT
+        # use these — they exist only so AutocompleteIndex (which reads
+        # strategy._exact_index / _synonym_index / _alias_dict / semantic_available)
+        # functions when pgvector is the active strategy.
+        self.semantic_available = True
+        self._build_autocomplete_indices(dictionary_path)
+
     # ------------------------------------------------------------------
     # Protocol interface
     # ------------------------------------------------------------------
@@ -373,6 +381,44 @@ class PgVectorCascadeStrategy:
     # ------------------------------------------------------------------
     # Private helper methods
     # ------------------------------------------------------------------
+
+    def _build_autocomplete_indices(self, csv_path: str) -> None:
+        import csv as _csv
+        from src.snomed_search.hybrid_cascade import ALIAS_DICTIONARY
+
+        self._exact_index: dict[str, dict] = {}
+        self._synonym_index: dict[str, dict] = {}
+        self._alias_dict: dict[str, str] = {}
+        try:
+            with open(csv_path, encoding="utf-8") as fh:
+                for row in _csv.DictReader(fh):
+                    preferred_term = (row.get("preferred_term") or "").strip().lower()
+                    if not preferred_term:
+                        continue
+                    record = {
+                        "concept_id": (row.get("concept_id") or "").strip(),
+                        "preferred_term": preferred_term,
+                    }
+                    self._exact_index[preferred_term] = record
+                    for syn in (row.get("synonyms") or "").split("|"):
+                        syn_clean = syn.strip().lower()
+                        if syn_clean:
+                            self._synonym_index[syn_clean] = record
+        except Exception as exc:  # noqa: BLE001
+            log.warning(
+                "PgVectorCascadeStrategy: autocomplete index build failed (%s) "
+                "— Tier-1/2 prefix degraded", type(exc).__name__,
+            )
+            return
+        for alias, target in ALIAS_DICTIONARY.items():
+            alias_key = alias.lower().strip()
+            target_key = target.lower().strip()
+            if target_key in self._exact_index:
+                self._alias_dict[alias_key] = target_key
+        log.info(
+            "PgVectorCascadeStrategy: autocomplete maps built (terms=%d synonyms=%d aliases=%d)",
+            len(self._exact_index), len(self._synonym_index), len(self._alias_dict),
+        )
 
     def _exact_match(self, conn, query: str) -> list[SNOMEDMatch]:
         with conn.cursor() as cur:

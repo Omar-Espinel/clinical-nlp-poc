@@ -143,6 +143,23 @@ See `README.md` for a high-level overview. Project root contains `api.py` (FastA
 
 ## Post-Build Changes Log
 
+### 2026-06-02 — Alias dictionary externalized + pgvector autocomplete gap fixed
+
+**What:** (1) The 87-entry lay-term→SNOMED `ALIAS_DICTIONARY` (previously a hardcoded literal in `hybrid_cascade.py`) is now loaded from `data/clinical_aliases.json`, matching the `data/*.json` convention. (2) `PgVectorCascadeStrategy` — the runtime default — now builds the lightweight in-memory `_exact_index`/`_synonym_index`/`_alias_dict` from the CSV path it already receives and sets `semantic_available = True`.
+
+**Why:** The autocomplete feature reads `_exact_index`/`_synonym_index`/`_alias_dict`/`semantic_available` off the active strategy. pgvector_cascade never built them, so on the **default** strategy all three autocomplete tiers were dead for clinical terms — Tier 1 (prefix/alias) and Tier 2 (fuzzy, which scans the same keys) returned nothing, and Tier 3 (semantic) was gated off by `semantic_available` defaulting to `False`. Only geo/phase suggestions survived. The 90k pgvector SQL search path is unaffected; these maps serve autocomplete only.
+
+**Files touched:**
+- `data/clinical_aliases.json` — new; 87 alias→target entries (verbatim from the old literal, no entries lost).
+- `src/snomed_search/hybrid_cascade.py` — `ALIAS_DICTIONARY` literal replaced with `_load_alias_dictionary()` JSON loader; module-level `ALIAS_DICTIONARY` name preserved so the `snomed_resolver.py` re-export still works.
+- `src/snomed_search/pgvector_cascade.py` — `_build_autocomplete_indices(csv_path)` added (stdlib `csv`, no pandas), called at end of `__init__`; `semantic_available = True` set. try/except keeps `__init__` from ever failing on a missing/empty CSV (degraded empty maps + WARNING).
+
+**Critical constraints honoured:** pgvector search/health_check/get_top_neighbors logic unchanged; no pandas import added to pgvector; HIPAA log lines emit only counts and error-type names; degraded path is non-fatal.
+
+**Test status after change:** Autocomplete suite 42 passed. Isolated checks: alias JSON loads identically across both modules (87 entries, re-export intact); pgvector imports without a DB; `_build_autocomplete_indices` yields exact=104/synonyms=540/aliases=86 on the live CSV and 0/0 (no raise) on a bad path. Full regression and live-DB pgvector verification not re-run (no Postgres in this environment).
+
+---
+
 ### 2026-06-01 — Autocomplete endpoint (GET /v1/autocomplete)
 
 **What:** Added a Google-style clinical query autocomplete feature. New `GET /v1/autocomplete?q=<prefix>&limit=<1-10>` endpoint returns up to 7 ranked suggestions across SNOMED terms, geo (cities/states/regions), and phases. Activates at ≥3 chars (server-enforced), typo-tolerant via rapidfuzz, lay-term aware (e.g. "heart attack" → "Myocardial Infarction"). Reuses the already-initialized SNOMED strategy's existing data structures — zero new ML models or indexes.
