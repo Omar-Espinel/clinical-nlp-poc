@@ -116,7 +116,7 @@ The system uses a **multi-turn pipeline** that is fully deterministic at runtime
 ---
 
 ## Data Inventory
-*   `data/snomed_clinical_trials.csv`: 116 terms used for algorithmic matching.
+*   `data/snomed_clinical_trials.csv`: 121 terms used for algorithmic matching (116 original + 5 psychiatric/depression concepts added 2026-06-01).
 *   `data/geo_canonical.json`: 200+ cities/regions for normalization.
 *   `data/ambiguous_terms.json`: Triggers and options for Layer 1 sufficiency.
 *   `data/metric_filters.json`: 12 Advarra metric field definitions for Aho-Corasick scan.
@@ -142,6 +142,30 @@ See `README.md` for a high-level overview. Project root contains `api.py` (FastA
 ---
 
 ## Post-Build Changes Log
+
+### 2026-06-01 — Parent SNOMED resolution + depression fix
+
+**What:** Ambiguous terms that have a valid broad SNOMED parent concept now proceed as a search result instead of always forcing clarification. A new `TriggerResult` frozen dataclass replaces the bare tuple return of `find_trigger()`. New reason `"ok_parent_snomed_used"` added to `_KNOWN_REASONS`. The "depression" entry's options were corrected from wrong neurological conditions to clinically appropriate psychiatric options.
+
+**Why:** "cancer trials in Boston" was forcing a clarification question even though it maps validly to SNOMED 363346000 (Malignant neoplastic disease). The fix allows broad terms to pass through to extraction while keeping clarification for terms with no useful parent (anatomical terms: brain, blood, skin, etc.). Autocomplete (a separate feature) will guide users toward specific terms proactively.
+
+**Files touched:**
+- `src/sufficiency_gate.py` — `TriggerResult` frozen dataclass added; `AmbiguousEntry` gains `snomed_parent_code: Optional[str]` and `allow_parent_search: bool`; `"ok_parent_snomed_used"` added to `_KNOWN_REASONS`; `find_trigger()` return type changed from `Optional[tuple]` to `Optional[TriggerResult]`; `SufficiencyGate.evaluate()` branches on `hit.use_parent_snomed`.
+- `src/pipeline.py` — `LOG_PATH_PARENT_SNOMED_RESOLVED` constant; `run_with_session()` new `elif decision.reason == "ok_parent_snomed_used"` branch that constructs a `SNOMEDMatch` and calls `_run_extraction_path` with `pre_resolved_snomed`; `_run_extraction_path()` accepts `pre_resolved_snomed: Optional[list[SNOMEDMatch]]` and prepends it (dedup by code).
+- `data/ambiguous_terms.json` — all entries gain `snomed_parent_code` and `allow_parent_search` fields; 30 clinical terms set to `allow_parent_search: true`; 14 anatomical terms set to `allow_parent_search: false`; depression options corrected to `["Major Depressive Disorder", "Bipolar Disorder", "Treatment Resistant Depression", "Postpartum Depression", "Persistent Depressive Disorder"]`.
+- `data/snomed_clinical_trials.csv` — 5 psychiatric/depression SNOMED concepts added (35489007, 13746004, 58703003, 38451003, 310495003) so the new depression options resolve at ≥0.7 confidence during registry validation. CSV grows from 116 → 121 rows.
+- `tests/test_parent_snomed_fix.py` — 10 new tests covering the parent-SNOMED path, TriggerResult flag propagation, SufficiencyDecision validation, anatomical-term fallback, and depression options correctness.
+- `tests/test_sufficiency_gate.py` — 3 existing tests updated (test_case2, test_case5, test_case6) to assert the new correct behavior for cancer/heart triggers.
+
+**Critical constraints honoured:**
+- HIPAA: no new logging of query text, filter values, or SNOMED display strings; only reason enum, category, session_id, and SNOMED codes (public identifiers) logged.
+- Backward compatible: new `AmbiguousEntry` fields are `Optional` with safe defaults; existing JSON entries without them continue to validate.
+- `TriggerResult` is a frozen dataclass (not Pydantic) to avoid circular deps with `AmbiguousEntry`.
+- `allow_parent_search: false` entries (brain, blood, skin, bone, etc.) still force clarification — anatomical terms have no useful broad SNOMED parent.
+
+**Test status after change:** 328 passed, 0 failures, 14 skipped.
+
+---
 
 ### 2026-05-28 — NameExtractor SNOMED-aware stop logic
 
