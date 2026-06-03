@@ -68,6 +68,7 @@ _CONJUNCTION_PATTERNS: list[tuple[re.Pattern, str, str, float]] = [
 ]
 
 _ALIAS_PATTERNS: list[tuple[re.Pattern, str, float]] = [
+    (re.compile(r'\berly[\-\s]{0,2}phase\b', re.IGNORECASE), "Phase 1", 0.70),
     (re.compile(r'\bpivotal\b', re.IGNORECASE), "Phase 3", 0.85),
     (re.compile(r'\bregistrational\b', re.IGNORECASE), "Phase 3", 0.85),
     (re.compile(r'\bfirst[\-\s]in[\-\s]human\b', re.IGNORECASE), "Phase 1", 0.85),
@@ -79,6 +80,8 @@ _ALIAS_PATTERNS: list[tuple[re.Pattern, str, float]] = [
     (re.compile(r'\bearly[\-\s]phase[\-\s](?:i|1)\b', re.IGNORECASE), "Phase 1", 0.85),
     (re.compile(r'\blate[\-\s]phase[\-\s](?:ii|2)\b', re.IGNORECASE), "Phase 2", 0.85),
 ]
+
+_PHASE_TYPOS: dict[str, str] = {"fase": "phase", "phaze": "phase", "phse": "phase", "erly": "early", "eraly": "early"}
 
 _ALL_PATTERNS: list[tuple[re.Pattern, str, float]] = _EXACT_PATTERNS + _ALIAS_PATTERNS
 
@@ -101,21 +104,32 @@ class PhaseExtractor:
         if not query:
             return PhaseResult(value=None, confidence=0.0, span=None)
 
+        # Build typo-corrected working copy; original query is never modified
+        working = query.lower()
+        for typo, correction in _PHASE_TYPOS.items():
+            working = re.sub(r'\b' + re.escape(typo) + r'\b', correction, working)
+
         # Check conjunction patterns first (more specific than single-phase patterns)
         for pat, phase_a, phase_b, conf in _CONJUNCTION_PATTERNS:
-            m = pat.search(query)
+            m = pat.search(working)
             if m:
+                orig_m = pat.search(query)
+                span = orig_m.span() if orig_m else None
+                effective_conf = conf if orig_m else conf - 0.05
                 return PhaseResult(
                     value=phase_a,
-                    confidence=conf,
-                    span=m.span(),
+                    confidence=effective_conf,
+                    span=span,
                     values=[phase_a, phase_b],
                 )
 
         for pat, value, conf in _ALL_PATTERNS:
-            m = pat.search(query)
+            m = pat.search(working)
             if m:
-                return PhaseResult(value=value, confidence=conf, span=m.span())
+                orig_m = pat.search(query)
+                span = orig_m.span() if orig_m else None
+                effective_conf = conf if orig_m else conf - 0.05
+                return PhaseResult(value=value, confidence=effective_conf, span=span)
 
         return self._fuzzy_extract(query)
 

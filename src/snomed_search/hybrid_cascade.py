@@ -13,6 +13,8 @@ from src.snomed_search.base import SNOMEDMatch, SNOMEDSearchStrategy
 
 logger = logging.getLogger(__name__)
 
+_STOP_CONCEPTS: frozenset[str] = frozenset({"169230002"})
+
 # Canonical location per architect decision D4. snomed_resolver.py re-exports from here.
 # Externalized to data/clinical_aliases.json (codebase data/*.json convention).
 _ALIAS_PATH = Path(__file__).parent.parent.parent / "data" / "clinical_aliases.json"
@@ -195,7 +197,9 @@ class HybridCascadeStrategy:
         semantic_hits = self._semantic_pass(query, after_stage_3)
         hits.extend(semantic_hits)
 
-        return self._dedup_longest_match(hits)
+        results = self._dedup_longest_match(hits)
+        results = [r for r in results if r.code not in _STOP_CONCEPTS]
+        return results
 
     def health_check(self) -> dict:
         return {

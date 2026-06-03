@@ -1,7 +1,7 @@
 # Clinical Research NLP — Architecture Context
 
-## Status: ACTIVE · v2 rework merged · LLM-free (fully deterministic runtime)
-## Last Updated: 2026-06-01
+## Status: ACTIVE · v2.1 clarification rework merged · LLM-free (fully deterministic runtime)
+## Last Updated: 2026-06-03
 ## Platform: Python 3.13 · Streamlit · FastAPI
 
 ---
@@ -12,22 +12,20 @@ Takes free-text clinical research queries and returns structured search results 
 ---
 
 ## High-Level Architecture
-The system uses a **multi-turn pipeline** that is fully deterministic at runtime (no LLM) with a sufficiency gate to minimize latency and external dependencies.
+The system uses a **multi-turn pipeline** that is fully deterministic at runtime (no LLM). As of v2.1 (2026-06-03) the only blocking gates are the **preprocessor safety check** and the **preflight mandatory check** — every query that clears both returns a `search` result. The ambiguous-trigger (L1), embedding (L2), metric-ambiguity, and name-ambiguity clarification gates were removed; ambiguity is now surfaced passively via `query_summary` flags instead of blocking.
 
-1.  **Preprocessor:** 3–500 char check, null-byte strip, ~77 regex safety patterns.
+1.  **Preprocessor:** 3–500 char check, null-byte strip, ~77 regex safety patterns. **(Blocking)**
 2.  **ConversationSession:** Merges user input into a `canonical_query` (substitute or append), then re-runs `assert_safe` on the merged query.
-3.  **SufficiencyGate (Layer 1):** Deterministic trigger detection for ambiguous terms (e.g., "cancer") from `ambiguous_terms.json` and auto-derived CSV tokens.
-4.  **Metric Resolver:** Aho-Corasick scan for 12 Advarra-specific metric fields.
-5.  **Preflight Mandatory Check:** Rejects early if no medical-condition / investigator / site signal is present.
-6.  **Extraction Path (Parallel):**
-    *   **DeterministicFilterExtractor:** Rule-based extraction — `PhaseExtractor` + `NameExtractor` + `MetricFieldAssembler` (investigator, site, city, state, phase). No LLM.
+3.  **SufficiencyGate (Layer 1):** Trigger detection from `ambiguous_terms.json` + auto-derived CSV tokens. **No longer blocks** — a hit with a valid parent maps to `ok_parent_snomed_used`; any other hit returns `ok_no_trigger`. (Tokens equal to a CSV `preferred_term`, e.g. "leukemia", are excluded from derived triggers entirely.)
+4.  **Metric Resolver:** Aho-Corasick scan for 12 Advarra metric fields; context-gated (numeric / comparator / verbatim label within ±10 tokens).
+5.  **Preflight Mandatory Check:** Passes if ANY of known_term / person prefix-suffix / phase token / capitalized non-function-word ≥4 chars (Signal D) is present; otherwise rejects. **(Blocking — only the residual clarification path besides preprocessor safety.)**
+6.  **Extraction Path (Parallel, ThreadPool):**
+    *   **DeterministicFilterExtractor:** Rule-based — `PhaseExtractor` (list-aware, conjunction-capable) + `NameExtractor` (opener-stripping) + `MetricFieldAssembler`. No LLM.
     *   **SNOMED Strategy:** Algorithmic search (default: `pgvector_cascade`; auto-falls back to Hybrid Cascade — Exact → Synonym → Fuzzy → Semantic).
 7.  **NegationAnnotator:** NegEx-based deterministic negation detection.
-8.  **SufficiencyGate (Layer 2):** Embedding-based ambiguity detection (nearest-neighbor spread).
-9.  **Clinical-Intent Gate:** Rejects if 0 SNOMED matches AND 0 filters set.
-10. **Post-Extraction Safety + Metric Ambiguity Gates:** Final clarification checks against extracted results.
-11. **GeoNormalizer:** Canonical city/state/region lookup.
-12. **ResponseAssembler:** Re-runs `assert_safe`, then Pydantic V2 assembly of `NLPOutput` or `ClarificationOutput`.
+8.  **post_extraction_check (non-blocking):** Carries `ambiguous_name_flags` for `query_summary`; unresolved metric fields pass through as `operator="any"`. Branches B/C1/C1b/C3 retained but fire rarely after preflight widening.
+9.  **GeoNormalizer:** Canonical city/state/region lookup.
+10. **ResponseAssembler:** Re-runs `assert_safe`, then Pydantic V2 assembly of `NLPOutput` (incl. additive, HTML-escaped `query_summary`). `ClarificationOutput` is produced only on preprocessor-safety / preflight rejection.
 
 ---
 
@@ -37,7 +35,7 @@ The system uses a **multi-turn pipeline** that is fully deterministic at runtime
 |---|---|---|
 | `Pipeline` | Orchestrator | `run_with_session()`, parallel execution, error handling. |
 | `Preprocessor` | Safety | Input sanitization, injection defense, length limits. |
-| `SufficiencyGate` | Ambiguity | Registry-based triggers (L1) and embedding signals (L2). |
+| `SufficiencyGate` | Ambiguity (non-blocking) | Registry-based triggers resolve to parent-SNOMED or pass through; surfaces flags, no longer gates. (EmbeddingAmbiguityGate / MetricAmbiguityGate classes retained but unused by the pipeline.) |
 | `DeterministicFilterExtractor` | Extraction | Rule-based structured filter parsing (phase, names, metrics). No LLM. |
 | `SNOMED Search` | Mapping | Pluggable strategies for term-to-code resolution. |
 | `Negation` | Context | NegEx cues for excluding negated clinical terms. |
@@ -55,10 +53,12 @@ The system uses a **multi-turn pipeline** that is fully deterministic at runtime
   "snomed_terms": [{"code": str, "display": str, "match_type": str, "confidence": float, "negated": bool}],
   "filters": {
     "investigator_name": FilterField, "site_name": FilterField,
-    "city": FilterField, "phase": FilterField,
+    "city": FilterField,
+    "phase": {"values": list[str], "confidence": float},
     "state": {"values": list[str], "confidence": float, "is_region": bool}
   },
   "metric_filters": list[MetricFilterOutput],
+  "query_summary": Optional[QuerySummary],   # additive (v2.1) — passive interpretation label + flags
   "metadata": {"processing_time_ms": int, "total_snomed_matches": int}
 }
 ```
@@ -82,13 +82,13 @@ The system uses a **multi-turn pipeline** that is fully deterministic at runtime
 ### Per-Turn Security Stack
 1. `Preprocessor.process()`: ~77 regex patterns (injection, harmful content).
 2. `Preprocessor.assert_safe()`: Defense-in-depth on merged canonical query.
-3. **Clinical-Intent Gate:** Prevents non-clinical queries from reaching full processing.
-4. **HTML Escaping:** `ResponseAssembler` escapes all user-derived strings.
+3. **Preflight Mandatory Check:** Rejects non-clinical queries (the only intent gate; widened in v2.1 with Signal D).
+4. **HTML Escaping:** `ResponseAssembler` escapes all user-derived strings, including every `query_summary` field (label, interpreted_terms/filters, unrecognized_terms).
 5. **Rate Limiting:** 5/60s and 30/session (app.py).
 
 ### HIPAA Log Hygiene
-*   **NEVER logged:** Raw query, canonical query, filter values, SNOMED displays.
-*   **LOGGED:** Counts, lengths, confidence scores, SNOMED codes, decision enums, latency.
+*   **NEVER logged:** Raw query, canonical query, filter values, SNOMED displays, `query_summary`, `unrecognized_terms`.
+*   **LOGGED:** Counts, lengths, confidence scores, SNOMED codes, decision enums, latency, and `query_summary`'s `has_warnings` / `flag_count` / `unrecognized_term_count`.
 *   **Audit Tool:** Grep for `to_dict()` or `repr(session)` in logs (use `session.summary_for_logging()`).
 
 ---
@@ -142,6 +142,30 @@ See `README.md` for a high-level overview. Project root contains `api.py` (FastA
 ---
 
 ## Post-Build Changes Log
+
+### 2026-06-03 — Clarification rework (v2.1): extraction fixes + gate removal + QuerySummary
+
+**3-phase change. All blocking clarification gates removed; the pipeline now always returns `NLPOutput` (type:"search") for any query that passes the preprocessor safety check AND preflight. `type:"clarification"` now fires only for safety rejections and genuine preflight failures.**
+
+**Phase 1 — extraction quality (one schema change):**
+- `filters.phase` is now `PhaseFilter(values: list[str], confidence: float)` (was `FilterField`); conjunctions parse to multiple values ("Phase 2 or 3"/"2 and 3"/"2/3"/"II or III" → `["Phase 2","Phase 3"]`). Rippled through `filter_extractor.py`, `extractors/phase.py`, `assembler.py`, `pipeline.py`, `conversation.py`, `app.py`, `api.py`.
+- NameExtractor strips conversational openers ("can you", "find me", …) from query start, local only (canonical_query untouched).
+- `_build_derived_entries` excludes tokens that exactly equal a CSV `preferred_term` (e.g. "leukemia") from becoming ambiguous triggers.
+- MetricIntentResolver: fuzzy/single-token matches valid only with a numeric, comparator phrase, or verbatim canonical_label within ±10 tokens (multi-word AC-synonym matches exempt).
+- Preflight widened: passes on any of known_term / person prefix-suffix / phase token / **Signal D** (capitalized non-function-word ≥4 chars).
+
+**Phase 2 — gate removal (no new fields):**
+- Removed `ambiguous_trigger` and `filters_without_condition` reasons + branches; `EmbeddingAmbiguityGate` (Step 5b) and `MetricAmbiguityGate` (Step 7b) usage removed from `pipeline.py` (classes preserved in `sufficiency_gate.py` for importers). Unresolved metric fields now pass through as `operator="any", value=None`.
+- `post_extraction_check` Branch A no longer blocks on name ambiguity — instead carries `ambiguous_name_flags: Optional[list[str]]` (new `SufficiencyDecision` field). Branches B / C1 / C1b / C3 kept.
+- All multi-turn infra (ConversationSession, Turn, session_id, canonical-query merge, MAX_TURNS, is_max_turns_reached, legacy `run()` shim) retained.
+
+**Phase 3 — QuerySummary (additive):**
+- New `FlagItem` + `QuerySummary` Pydantic models in `assembler.py`; `NLPOutput.query_summary: Optional[QuerySummary] = None`. `assemble_query_summary()` builds an HTML-escaped interpretation label (SNOMED · phase · investigator · site · city · state), interpreted_terms/filters, confidence flags (investigator/site <0.75, SNOMED 0.60–0.72 capped at 3, ambiguous_name_flags → "investigator_or_site"), and unrecognized_terms (capped 5×50 chars). `api.py` adds `api_version:"2.1"` to the envelope; `app.py` renders the passive label + flags + "Edit this search" button.
+- HIPAA: query_summary/unrecognized_terms treated like canonical_query — never logged; only `has_warnings`/`flag_count`/`unrecognized_term_count` are log-safe. `assert_safe()` (step 9) still runs before summary assembly.
+
+**Test status:** 372 passed / 0 failed (`--ignore` pgvector_cascade, autocomplete, qa_testing). New: `test_phase1_extraction_fixes.py` (25), `test_phase2_gate_removal.py` (8 ACs), `test_query_summary.py` (12). Several existing tests migrated off removed clarification behavior. Note: `qa_testing/test_agent.py:54` has a pre-existing `NameError` (bare `qa_testing` ident) unrelated to this work.
+
+---
 
 ### 2026-06-02 — Alias dictionary externalized + pgvector autocomplete gap fixed
 

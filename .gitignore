@@ -44,3 +44,4 @@ qa_testing/suites/suite_03.json
 qa_testing/suites/suite_04.json
 qa_testing/suites/suite_05.json
 qa_testing/run_suites.py
+qa_testing/results/

@@ -138,11 +138,20 @@ class DeterministicFilterExtractor:
 
         # Step 4: name extraction on residual text
         phase_span = [phase_result.span] if phase_result.span else []
-        excluded = geo_spans + metric_spans + phase_span
+        safe_excluded = []
+        for gs in geo_spans:
+            geo_text = canonical_query[gs[0]:gs[1]].lower()
+            is_site_prefix = any(
+                mw.startswith(geo_text + " ") or mw == geo_text
+                for mw in self._names._multiword_set
+            )
+            if not is_site_prefix:
+                safe_excluded.append(gs)
+        excluded = safe_excluded + metric_spans + phase_span
         name_result = self._names.extract(canonical_query, excluded_spans=excluded)
 
         # Step 5: geo signal extraction for city/state
-        city_raw, state_raw = self._names._extract_city_state(canonical_query)
+        geo_result = self._names._extract_city_state(canonical_query)
 
         # Step 6: metric assembly
         has_snomed = qualifying_snomed_count > 0
@@ -153,16 +162,18 @@ class DeterministicFilterExtractor:
         )
 
         # Step 7: build StateFilter
-        if state_raw:
-            state_filter = StateFilter(
-                values=[state_raw],
-                confidence=0.90,
-                is_region=False,
-            )
+        if geo_result.is_region and geo_result.region_states:
+            state_filter = StateFilter(values=geo_result.region_states, confidence=0.95, is_region=True)
+        elif geo_result.is_region and geo_result.city_raw:
+            if self._geo is not None and geo_result.original_region_term:
+                geo_norm = self._geo.normalize(geo_result.original_region_term, None)
+                state_filter = StateFilter(values=geo_norm.states if geo_norm.states else [], confidence=geo_norm.confidence, is_region=True)
+            else:
+                state_filter = StateFilter(values=[], confidence=0.0, is_region=True)
+        elif geo_result.state_raw:
+            state_filter = StateFilter(values=[geo_result.state_raw], confidence=0.90, is_region=False)
         else:
-            state_filter = StateFilter(
-                values=[], confidence=0.0, is_region=False
-            )
+            state_filter = StateFilter(values=[], confidence=0.0, is_region=False)
 
         # Step 8: assemble ExtractedFilters
         # Expand conjunction phases (e.g. "Phase 2/3") into multi-value PhaseFilter
@@ -185,8 +196,8 @@ class DeterministicFilterExtractor:
                 confidence=name_result.site_confidence,
             ),
             city=FilterField(
-                value=city_raw,
-                confidence=0.90 if city_raw else 0.0,
+                value=geo_result.city_raw,
+                confidence=0.90 if geo_result.city_raw else 0.0,
             ),
             state=state_filter,
             phase=phase_filter,
@@ -194,15 +205,21 @@ class DeterministicFilterExtractor:
             metric_fields=assembler_result.metric_fields,
         )
 
+        city_found = geo_result.city_raw is not None
+        state_found = geo_result.state_raw is not None or geo_result.is_region
+        is_region = geo_result.is_region
+        region_states = len(geo_result.region_states)
         logger.info(
             "deterministic_extractor: phase_found=%s "
             "inv_conf=%.2f site_conf=%.2f city_found=%s state_found=%s "
-            "ambiguous_names=%d metric_fields=%d",
+            "is_region=%s region_states=%d ambiguous_names=%d metric_fields=%d",
             phase_result.value is not None,
             name_result.investigator_confidence,
             name_result.site_confidence,
-            city_raw is not None,
-            state_raw is not None,
+            city_found,
+            state_found,
+            is_region,
+            region_states,
             len(name_result.ambiguous_names),
             len(assembler_result.metric_fields),
         )

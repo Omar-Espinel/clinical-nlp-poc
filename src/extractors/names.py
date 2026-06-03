@@ -11,9 +11,11 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
+from dataclasses import dataclass as _dc
 from typing import Optional
 
 from rapidfuzz import fuzz
+from src.extractors.negation_window import is_negated_span
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +100,10 @@ _CANONICAL_DISPLAY_TABLE: dict[str, str] = {
     "boston children's": "Boston Children's",
     "children's hospital": "Children's Hospital",
     "veterans affairs": "Veterans Affairs",
+    "moffitt cancer center": "Moffitt Cancer Center",
+    "moffitt cancer": "Moffitt Cancer Center",
+    "massachusetts general hospital": "Massachusetts General Hospital",
+    "massachusetts general": "Massachusetts General Hospital",
 }
 
 # ---------------------------------------------------------------------------
@@ -107,21 +113,28 @@ _CANONICAL_DISPLAY_TABLE: dict[str, str] = {
 # Prefix pattern: dr/prof followed by 1-3 name tokens.
 # Applied on norm_query (already title-cased). Uses IGNORECASE so "Dr" matches.
 _PERSON_PREFIX_PATTERN = re.compile(
-    r'\b(Dr\.?|Prof\.?|Professor)\s+([A-Z][a-z]{1,30}(?:\s+[A-Z][a-z]{1,30}){0,2})\b'
+    r'\b(Dr\.?|Prof\.?|Professor)\s+([A-Z][a-z\']{1,30}(?:\s+[A-Z][a-z\']{1,30}){0,2})\b'
 )
 # Suffix pattern: applied on norm_query; suffix must be a separate token (whitespace/comma required)
 _PERSON_SUFFIX_PATTERN = re.compile(
-    r'\b([A-Z][a-z]{1,30}(?:\s+[A-Z][a-z]{1,30}){0,2})(?:\s*,\s*|\s+)(M\.?D\.?|Ph\.?D\.?|D\.?O\.?|R\.?N\.?|M\.?P\.?H\.?)\b',
+    r'\b([A-Z][a-z\']{1,30}(?:\s+[A-Z][a-z\']{1,30}){0,2})(?:\s*,\s*|\s+)(M\.?D\.?|Ph\.?D\.?|D\.?O\.?|R\.?N\.?|M\.?P\.?H\.?)\b',
     re.IGNORECASE,
 )
 # Title-case multi-token pattern for STEP 5 — max 2 tokens to avoid long spurious matches
 _TITLE_CASE_PATTERN = re.compile(
     r'\b([A-Z][a-z]{1,30}(?:\s+[A-Z][a-z]{1,30}){1,1})\b'
 )
-_TITLE_TOKEN = re.compile(r'[A-Z][a-z]{1,30}')
+_TITLE_TOKEN = re.compile(r"[A-Z][a-z']{1,30}")
 _WORD_TOKEN = re.compile(r"[\w']{2,30}")
 
 # Common non-name words that appear title-cased but are not person names
+_INSTITUTION_MATCH_BLOCKLIST: frozenset[str] = frozenset({
+    "clinical", "reasearch", "research", "studies", "study",
+    "trials", "trial", "find", "all", "the", "any", "some",
+    "these", "those", "available", "ongoing", "current",
+    "currently", "please", "looking", "show", "list",
+})
+
 _STOPWORDS: frozenset[str] = frozenset({
     "Phase", "Trial", "Trials", "Diabetes", "Cancer", "Study", "Clinical",
     "Research", "Data", "Patient", "Patients", "Treatment", "Disease",
@@ -220,6 +233,15 @@ def _extract_name_from_normalized(
     abs_start = start + m.start()
     abs_end = abs_start + len(name)
     return (name, abs_start, abs_end)
+
+
+@_dc
+class GeoExtractResult:
+    city_raw: Optional[str]
+    state_raw: Optional[str]
+    original_region_term: Optional[str]
+    is_region: bool
+    region_states: list[str]
 
 
 # ---------------------------------------------------------------------------
@@ -342,6 +364,8 @@ class NameExtractor:
                 return True
         # Fuzzy match per word against primary set
         for word in text_lower.split():
+            if word in _INSTITUTION_MATCH_BLOCKLIST:
+                continue
             for kw in self._primary_set:
                 if fuzz.token_sort_ratio(word, kw) >= INSTITUTION_FUZZY_THRESHOLD:
                     return True
@@ -433,44 +457,66 @@ class NameExtractor:
     # ------------------------------------------------------------------
     # _extract_city_state  (FIX 4)
     # ------------------------------------------------------------------
-    def _extract_city_state(
-        self, query: str
-    ) -> tuple[Optional[str], Optional[str]]:
+    def _extract_city_state(self, query: str) -> GeoExtractResult:
+        from src.extractors.negation_window import is_negated_span
         q_lower = query.lower()
-
-        # City: longest-first scan of city keys
-        city_canonical: Optional[str] = None
+        city_raw: Optional[str] = None
+        original_region_term: Optional[str] = None
+        is_region_match: bool = False
+        region_states: list[str] = []
         for key in sorted(self._geo_city_keys, key=len, reverse=True):
-            pattern = r'\b' + re.escape(key) + r'\b'
-            if re.search(pattern, q_lower):
-                city_canonical = self._cities_data[key]["canonical"]
+            m = re.search(r'\b' + re.escape(key) + r'\b', q_lower)
+            if m and not is_negated_span(q_lower, m.start()):
+                city_raw = self._cities_data[key]["canonical"]
                 break
-
-        # Fallback to regions
-        if city_canonical is None:
+        if city_raw is None:
             for key in sorted(self._geo_region_keys, key=len, reverse=True):
-                pattern = r'\b' + re.escape(key) + r'\b'
-                if re.search(pattern, q_lower):
-                    region_info = self._regions_data[key]
-                    city_canonical = region_info.get("primary_city")
+                m = re.search(r'\b' + re.escape(key) + r'\b', q_lower)
+                if m and not is_negated_span(q_lower, m.start()):
+                    info = self._regions_data[key]
+                    original_region_term = key
+                    is_region_match = True
+                    region_states = list(info.get("region_states", []))
+                    if region_states:
+                        negated_states: set[str] = set()
+                        for state_name in region_states:
+                            state_lower = state_name.lower()
+                            m_st = re.search(r'\b' + re.escape(state_lower) + r'\b', q_lower)
+                            if m_st and is_negated_span(q_lower, m_st.start()):
+                                negated_states.add(state_name)
+                        for key2, canonical_state in self._state_canonical.items():
+                            if canonical_state in region_states and canonical_state not in negated_states:
+                                if key2 in self._state_abbrev_keys:
+                                    m_ab = re.search(r'\b' + re.escape(key2) + r'\b', query)
+                                else:
+                                    m_ab = re.search(r'\b' + re.escape(key2) + r'\b', q_lower)
+                                if m_ab and is_negated_span(q_lower, m_ab.start()):
+                                    negated_states.add(canonical_state)
+                        region_states = [s for s in region_states if s not in negated_states]
+                    city_raw = info.get("primary_city")
                     break
-
-        # State: scan state_keys longest-first
-        state_canonical: Optional[str] = None
+        state_raw: Optional[str] = None
         for key in sorted(self._state_keys, key=len, reverse=True):
             if key in self._state_abbrev_keys:
-                # Case-sensitive, word-boundary
-                pattern = r'\b' + re.escape(key) + r'\b'
-                if re.search(pattern, query):
-                    state_canonical = self._state_canonical[key]
-                    break
+                m = re.search(r'\b' + re.escape(key) + r'\b', query)
             else:
-                pattern = r'\b' + re.escape(key) + r'\b'
-                if re.search(pattern, q_lower):
-                    state_canonical = self._state_canonical[key]
-                    break
-
-        return (city_canonical, state_canonical)
+                m = re.search(r'\b' + re.escape(key) + r'\b', q_lower)
+            if m and not is_negated_span(q_lower, m.start()):
+                state_raw = self._state_canonical[key]
+                break
+        # If city_raw was found via city lookup and its associated state is negated, null state_raw
+        if city_raw is not None and state_raw is not None and not is_region_match:
+            state_lower = state_raw.lower()
+            m_st = re.search(r'\b' + re.escape(state_lower) + r'\b', q_lower)
+            if m_st and is_negated_span(q_lower, m_st.start()):
+                state_raw = None
+        return GeoExtractResult(
+            city_raw=city_raw,
+            state_raw=state_raw,
+            original_region_term=original_region_term,
+            is_region=is_region_match,
+            region_states=region_states,
+        )
 
     # ------------------------------------------------------------------
     # extract  — main decision tree
@@ -569,6 +615,9 @@ class NameExtractor:
                     # Use normalised query so title tokens are visible
                     prefix_norm = norm_query[: m.start()]
                     preceding = _TITLE_TOKEN.findall(prefix_norm)[-3:]
+                    non_stop = [t for t in preceding if t not in _STOPWORDS]
+                    if not non_stop and not self._multiword_set.intersection({kw}):
+                        continue
                     if preceding:
                         candidate_site = " ".join(preceding) + " " + kw.title()
                     else:
@@ -583,6 +632,8 @@ class NameExtractor:
         # Capture prefix + following tokens, then trim stopwords from right
         # -------------------------------------------------------------------
         for m in _PERSON_PREFIX_PATTERN.finditer(norm_query):
+            if is_negated_span(norm_query.lower(), m.start()):
+                continue
             raw_cand = m.group(2)
             # Trim trailing stopword tokens
             tokens = raw_cand.split()
@@ -644,14 +695,23 @@ class NameExtractor:
         for ctx in sorted_ctx_person:
             ctx_pattern = r'\b' + re.escape(ctx) + r'\b'
             for m in re.finditer(ctx_pattern, query_lower):
+                if is_negated_span(query_lower, m.start()):
+                    continue
                 after_pos = m.end()
                 # Extract next 1-3 title-case tokens from normalised query
                 after_norm = norm_query[after_pos:]
                 title_tokens = _TITLE_TOKEN.findall(after_norm)[:3]
                 if not title_tokens:
                     continue
+                # Skip leading honorific tokens so the actual name is extracted
+                while title_tokens and title_tokens[0].lower().rstrip('.') in PERSON_PREFIXES:
+                    title_tokens = title_tokens[1:]
+                if not title_tokens:
+                    continue
                 trimmed_tokens = []
                 for i, tok in enumerate(title_tokens):
+                    if tok in _STOPWORDS:
+                        break
                     if tok.lower() in self._snomed_single_tokens:
                         break
                     if i + 1 < len(title_tokens) and (tok.lower(), title_tokens[i + 1].lower()) in self._snomed_multi_tokens:
@@ -696,6 +756,8 @@ class NameExtractor:
         for ctx in sorted_ctx_site:
             ctx_pattern = r'\b' + re.escape(ctx) + r'\b'
             for m in re.finditer(ctx_pattern, query_lower):
+                if is_negated_span(query_lower, m.start()):
+                    continue
                 after_pos = m.end()
                 after_norm = norm_query[after_pos:].lstrip()
                 after_lower = query_lower[after_pos:].lstrip()
@@ -707,6 +769,15 @@ class NameExtractor:
 
                 # Try title-case tokens first
                 title_tokens = _TITLE_TOKEN.findall(after_norm)[:4]
+                # Strip leading stopwords so genuine site names are captured
+                while title_tokens and title_tokens[0] in _STOPWORDS:
+                    title_tokens = title_tokens[1:]
+                if not title_tokens:
+                    continue
+                if len(title_tokens) > 5:
+                    continue
+                if title_tokens[0].lower().rstrip('.') in PERSON_PREFIXES:
+                    continue
                 # Fallback: any word tokens (any case, from lower)
                 word_tokens = _WORD_TOKEN.findall(after_lower)[:3]
 

@@ -93,6 +93,13 @@ _FUNCTION_WORDS: frozenset[str] = frozenset({
     "study",
 })
 
+_NON_CLINICAL_TOPIC_TOKENS: frozenset[str] = frozenset({
+    "restaurant", "restaurants", "food", "hotel", "hotels",
+    "weather", "traffic", "directions", "parking", "menu",
+    "dining", "cuisine", "recipe", "recipes", "entertainment",
+    "shopping", "sports", "news", "politics", "finance",
+})
+
 
 
 @dataclass
@@ -278,11 +285,14 @@ class PreflightMandatoryCheck:
         query_lower = query.lower()
         signal_count = 0
 
-        if self._signal_a_snomed(query_lower):
+        sig_a_known_term = self._signal_a_snomed(query_lower)
+        if sig_a_known_term:
             signal_count += 1
-        if self._signal_b_prefix(query_lower):
+        sig_b_person_prefix = self._signal_b_prefix(query_lower)
+        if sig_b_person_prefix:
             signal_count += 1
-        if self._signal_c_suffix(query_lower):
+        sig_c_person_suffix = self._signal_c_suffix(query_lower)
+        if sig_c_person_suffix:
             signal_count += 1
         if self._signal_d_institution(query_lower):
             signal_count += 1
@@ -292,6 +302,19 @@ class PreflightMandatoryCheck:
             signal_count += 1
         if self._signal_g_capitalized(query, query_lower):
             signal_count += 1
+
+        sig_person = sig_b_person_prefix or sig_c_person_suffix
+        query_tokens = re.findall(r"[a-z']+", query_lower)
+        if (
+            not sig_a_known_term
+            and not sig_person
+            and any(tok in _NON_CLINICAL_TOPIC_TOKENS for tok in query_tokens)
+        ):
+            logger.info(
+                "preflight: rejection_reason=non_clinical_topic session_id=%s",
+                session_id,
+            )
+            return PreflightResult(passed=False, signal_count=signal_count)
 
         result = PreflightResult(
             passed=signal_count > 0,

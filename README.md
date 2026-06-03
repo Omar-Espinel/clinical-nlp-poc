@@ -138,13 +138,33 @@ Every API response is one of two types, distinguished by the `type` field.
 ],
 "filters": {
 "city": {"value": "Boston", "confidence": 0.99},
-"phase": {"value": "Phase 3", "confidence": 0.99},
+"phase": {"values": ["Phase 2", "Phase 3"], "confidence": 0.99},
 "state": {"values": ["Massachusetts"], "confidence": 0.99, "is_region": false}
+},
+"query_summary": {
+"label": "Type 2 Diabetes Mellitus · Phase 2, Phase 3 · Boston · Massachusetts",
+"interpreted_terms": ["type 2 diabetes mellitus"],
+"flags": [],
+"unrecognized_terms": [],
+"has_warnings": false
 }
 },
 "session_id": "uuid4-here",
+"api_version": "2.1",
 "processing_time_ms": 843
 }
+
+`filters.phase` is now a list-aware `PhaseFilter` (`values: list[str]`),
+supporting conjunctions like `Phase 2 or 3` → `["Phase 2", "Phase 3"]`.
+`query_summary` is a new optional, additive field carrying a passive,
+HTML-escaped interpretation label plus confidence flags and unrecognized
+terms — consumers that ignore it are unaffected. `api_version` ("2.1") is
+added to the response envelope.
+
+As of v2.1 a `type: "clarification"` response is only returned for
+preprocessor safety rejections and genuine preflight failures — the
+ambiguous-term, embedding, metric, and name-ambiguity clarification gates
+no longer block; every other query returns a `search` result.
 
 
 **Clarification request** (`type: "clarification"`):

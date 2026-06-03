@@ -1,50 +1,48 @@
 concept_id,preferred_term,synonyms
-44054006,type 2 diabetes mellitus,t2dm|type 2 diabetes|diabetes type 2|t2d|non-insulin dependent diabetes|niddm|adult onset diabetes mellitus
-46635009,type 1 diabetes mellitus,t1dm|type 1 diabetes|diabetes type 1|t1d|insulin dependent diabetes|iddm|juvenile onset diabetes
-73211009,diabetes mellitus,diabetes|diabetic|dm
+44054006,type 2 diabetes mellitus,t2dm|type 2 diabetes|diabetes type 2|t2d|non-insulin dependent diabetes|niddm|adult onset diabetes mellitus|t2 diabetes|type-2 diabetes|non-insulin-dependent diabetes
+46635009,type 1 diabetes mellitus,t1dm|type 1 diabetes|diabetes type 1|t1d|insulin dependent diabetes|iddm|juvenile onset diabetes|t1 diabetes|type-1 diabetes|insulin-dependent diabetes
+73211009,diabetes mellitus,diabetes|diabetic|dm|diabetes nos|diabetic condition
 33747003,blood glucose measurement,blood glucose|blood sugar level|glucose level|fasting glucose|hba1c|glycated hemoglobin|a1c
 182021000,glucose monitoring,glucose management|glucose control|sugar control|blood sugar management|glucose monitoring program
 38341003,hypertension,high blood pressure|htn|elevated blood pressure|arterial hypertension|systolic hypertension|essential hypertension
 22298006,myocardial infarction,heart attack|mi|acute mi|ami|acute myocardial infarction|stemi|nstemi|cardiac infarction
-84114007,heart failure,chf|congestive heart failure|cardiac failure|hf|left heart failure|right heart failure|systolic heart failure|diastolic heart failure
+84114007,heart failure,chf|congestive heart failure|cardiac failure|hf|left heart failure|right heart failure|systolic heart failure|diastolic heart failure|hfpef|hfref|heart failure with preserved ejection fraction|heart failure with reduced ejection fraction
 49436004,atrial fibrillation,afib|af|a-fib|irregular heartbeat|a fib|auricular fibrillation|paroxysmal afib|persistent afib
 56265001,heart disease,cardiac disease|coronary disease|cardiovascular disease|heart disorder|cardiac disorder
 230690007,cerebrovascular accident,stroke|brain stroke|cva|ischemic stroke|hemorrhagic stroke|cerebral infarction|brain attack
 128053003,deep vein thrombosis,dvt|leg clot|deep venous thrombosis|venous thrombosis leg|lower extremity dvt
-415068001,pulmonary embolism,pe|pulmonary thromboembolism|lung clot|blood clot in lung
+415068001,pulmonary embolism,pe|pulmonary thromboembolism|lung clot|blood clot in lung|lung embolism|blood clot lung
 396275006,thrombosis,blood clot|thrombus|thromboembolism|venous thrombosis|arterial thrombosis
 400047006,peripheral arterial disease,pad|peripheral vascular disease|pvd|peripheral artery disease|arterial disease|leg artery disease
 53741008,coronary artery disease,cad|coronary heart disease|ischemic heart disease|ihd|coronary atherosclerosis
-44054006,type 2 diabetes mellitus,t2dm|type 2 diabetes|diabetes type 2|t2d|non-insulin dependent diabetes
-254837009,malignant neoplasm of breast,breast cancer|breast carcinoma|breast tumor|brca|female breast cancer|breast adenocarcinoma|invasive breast cancer|breast malignancy
+254837009,malignant neoplasm of breast,breast cancer|breast carcinoma|breast tumor|brca|female breast cancer|breast adenocarcinoma|invasive breast cancer|breast malignancy|breast cancer nos|brca cancer|female breast malignancy
 363358000,malignant neoplasm of lung,lung cancer|lung carcinoma|pulmonary malignancy|lung tumor|pulmonary cancer|lung adenocarcinoma
-254637007,non-small cell lung carcinoma,nsclc|non small cell lung cancer|non-small cell carcinoma|nsclca|squamous cell lung carcinoma|large cell lung carcinoma
+254637007,non-small cell lung carcinoma,nsclc|non small cell lung cancer|non-small cell carcinoma|nsclca|squamous cell lung carcinoma|large cell lung carcinoma|non small cell carcinoma|nsclc cancer
 254632001,small cell lung carcinoma,sclc|small cell cancer|small cell lung cancer|oat cell carcinoma
-363406005,malignant neoplasm of colon,colon cancer|colorectal cancer|colorectal carcinoma|crc|colon carcinoma|rectal cancer|bowel cancer|colonic cancer
-25370001,hepatocellular carcinoma,liver cancer|hcc|hepatic carcinoma|liver carcinoma|hepatoma|primary liver cancer
+363406005,malignant neoplasm of colon,colon cancer|colorectal cancer|colorectal carcinoma|crc|colon carcinoma|rectal cancer|bowel cancer|colonic cancer|colon cancer nos|rectal carcinoma|bowel carcinoma
+25370001,hepatocellular carcinoma,liver cancer|hcc|hepatic carcinoma|liver carcinoma|hepatoma|primary liver cancer|hepatocellular cancer|hcc cancer|liver cell carcinoma
 363418001,malignant neoplasm of pancreas,pancreatic cancer|pancreatic carcinoma|cancer of pancreas|pancreas cancer
 399068003,malignant neoplasm of prostate,prostate cancer|prostate carcinoma|prostatic cancer|cancer of prostate|prostate adenocarcinoma
 363443007,malignant neoplasm of ovary,ovarian cancer|ovarian carcinoma|cancer of ovary|ovarian malignancy
 363354003,malignant neoplasm of cervix uteri,cervical cancer|cervical carcinoma|cancer of cervix|uterine cervical cancer
 126952004,malignant neoplasm of brain,brain cancer|brain carcinoma|malignant brain tumor|brain malignancy|glioblastoma multiforme|gbm|glioma|astrocytoma
 108369006,neoplasm,tumor|neoplasm nos|mass|growth|neoplastic lesion
-363346000,malignant neoplasm,cancer|malignant tumor|malignant neoplasm nos|carcinoma|malignancy
+363346000,malignant neoplasm,cancer|malignant tumor|malignant neoplasm nos|carcinoma|malignancy|cancer nos|malignant disease|malignant condition
 372064008,malignant neoplasm of bone,bone cancer|bone sarcoma|osteosarcoma|ewing sarcoma|bone malignancy
-363518003,malignant neoplasm of kidney,kidney cancer|renal cancer|renal cell carcinoma|rcc|renal carcinoma|kidney carcinoma
+363518003,malignant neoplasm of kidney,kidney cancer|renal cancer|renal cell carcinoma|rcc|renal carcinoma|kidney carcinoma|renal malignancy|rcc cancer
 399326009,malignant neoplasm of urinary bladder,bladder cancer|bladder carcinoma|urothelial carcinoma|transitional cell carcinoma
 363478007,malignant neoplasm of thyroid gland,thyroid cancer|thyroid carcinoma|papillary thyroid cancer|follicular thyroid cancer
 363349007,malignant neoplasm of stomach,stomach cancer|gastric cancer|gastric carcinoma|gastric adenocarcinoma|stomach carcinoma
 363416006,malignant neoplasm of esophagus,esophageal cancer|esophageal carcinoma|oesophageal cancer|cancer of esophagus
 372244006,malignant melanoma,melanoma|skin cancer|cutaneous melanoma|skin melanoma|malignant skin melanoma
 87163000,leukemia,blood cancer|leukaemia|leukemic disease
-413448000,acute myeloid leukemia,aml|acute myelogenous leukemia|acute myelocytic leukemia
+413448000,acute myeloid leukemia,aml|acute myelogenous leukemia|acute myelocytic leukemia|acute myeloid leukaemia|aml leukemia
 92818009,chronic myeloid leukemia,cml|chronic myelogenous leukemia|chronic granulocytic leukemia
-91857003,acute lymphoblastic leukemia,all|acute lymphocytic leukemia|acute lymphoid leukemia
+91857003,acute lymphoblastic leukemia,acute lymphocytic leukemia|acute lymphoid leukemia
 51092000,chronic lymphocytic leukemia,cll|chronic lymphoid leukemia|b-cell cll
-118600007,malignant lymphoma,lymphoma|lymphoid malignancy|lymphatic cancer
+118600007,malignant lymphoma,lymphoma|lymphoid malignancy|lymphatic cancer|lymphoma nos|lymphatic malignancy|lymphoid cancer
 118601006,non-hodgkin lymphoma,nhl|non hodgkin lymphoma|non-hodgkins lymphoma|nhl lymphoma
-118600007,malignant lymphoma,lymphoma|hodgkin lymphoma|hodgkins lymphoma|hl|hodgkin disease
-109989006,multiple myeloma,mm|plasma cell myeloma|myeloma|plasmacytoma
+109989006,multiple myeloma,mm|plasma cell myeloma|myeloma|plasmacytoma|multiple myeloma disease|plasma cell cancer|myeloma disease
 26929004,alzheimer disease,alzheimers|alzheimer's|alzheimer disease|alzheimer's disease|ad dementia|senile dementia|alzheimers disease
 49049000,parkinson disease,parkinsons|parkinson's|pd|parkinson's disease|parkinsons disease|idiopathic parkinsonism
 24700007,multiple sclerosis,ms|multiple sclerosis disease|ms disease|relapsing remitting ms|rrms|progressive ms
@@ -52,7 +50,7 @@ concept_id,preferred_term,synonyms
 84757009,epilepsy,seizures|seizure disorder|convulsions|epileptic disorder
 191630001,vascular dementia,vascular dementia disease|multi-infarct dementia
 40379007,mild cognitive impairment,mci|cognitive impairment|memory impairment
-13645005,chronic obstructive pulmonary disease,copd|emphysema|chronic bronchitis|obstructive lung disease|chronic obstructive airways disease
+13645005,chronic obstructive pulmonary disease,copd|emphysema|chronic bronchitis|obstructive lung disease|chronic obstructive airways disease|chronic obstructive disease
 195967001,asthma,bronchial asthma|asthmatic disease|asthma attack|reactive airway disease
 40122008,idiopathic pulmonary fibrosis,ipf|pulmonary fibrosis|lung fibrosis|idiopathic fibrosing alveolitis
 19829001,lung disorder,lung disease|pulmonary disorder|pulmonary disease|respiratory disease|respiratory disorder
@@ -72,8 +70,6 @@ concept_id,preferred_term,synonyms
 56717001,tuberculosis,tb|mycobacterium tuberculosis|pulmonary tuberculosis|active tuberculosis
 840539006,covid-19,covid|coronavirus disease 2019|sars-cov-2 infection|coronavirus|covid19
 67782005,acute respiratory distress syndrome,ards|acute lung injury|ali
-363346000,malignant neoplasm,cancer nos|malignant disease|malignant condition
-73211009,diabetes mellitus,diabetes nos|diabetic condition
 416608005,chemotherapy,chemo|chemotherapy treatment|cytotoxic therapy|systemic chemotherapy|antineoplastic therapy
 308539001,stem cell transplant,bone marrow transplant|bmt|hsct|hematopoietic stem cell transplant|bone marrow transplantation|autologous stem cell transplant
 108290001,radiation therapy,radiation|radiotherapy|rt|xrt|external beam radiation|radiation treatment|radiation oncology
@@ -95,28 +91,18 @@ concept_id,preferred_term,synonyms
 281464007,blood pressure measurement,bp measurement|blood pressure monitoring|bp monitoring|blood pressure check
 271442007,fasting blood glucose measurement,fasting glucose test|fasting blood sugar|fbg|fbs
 77386006,pregnancy,gestation|pregnant|gravid|maternity
-415068001,pulmonary embolism,pe|lung embolism|pulmonary thromboembolism|blood clot lung
 61929009,organ transplantation,transplant|organ transplant|solid organ transplant
 76571007,cardiomyopathy,cardiac myopathy|heart muscle disease|myocardial disease
 41339005,angina pectoris,angina|chest pain|stable angina|unstable angina|anginal pain
 233726005,aortic stenosis,aortic valve stenosis|as|aortic valve disease|severe aortic stenosis
 195006006,atrial flutter,afl|auricular flutter|cardiac flutter
-84114007,heart failure,hfpef|hfref|heart failure with preserved ejection fraction|heart failure with reduced ejection fraction
-13645005,chronic obstructive pulmonary disease,obstructive lung disease|chronic obstructive disease
 25374005,gastroesophageal reflux disease,gerd|acid reflux|reflux disease|gastro-oesophageal reflux|gord
 40433004,hyperlipidemia,high cholesterol|dyslipidemia|hypercholesterolemia|elevated lipids|hyperlipidaemia
-44054006,type 2 diabetes mellitus,t2 diabetes|type-2 diabetes|non-insulin-dependent diabetes
-46635009,type 1 diabetes mellitus,t1 diabetes|type-1 diabetes|insulin-dependent diabetes
-413448000,acute myeloid leukemia,acute myeloid leukaemia|aml leukemia
-254637007,non-small cell lung carcinoma,non small cell carcinoma|nsclc cancer
-25370001,hepatocellular carcinoma,hepatocellular cancer|hcc cancer|liver cell carcinoma
-254837009,malignant neoplasm of breast,breast cancer nos|brca cancer|female breast malignancy
-363406005,malignant neoplasm of colon,colon cancer nos|colorectal carcinoma|rectal carcinoma|bowel carcinoma
-109989006,multiple myeloma,multiple myeloma disease|plasma cell cancer|myeloma disease
-363518003,malignant neoplasm of kidney,kidney carcinoma|renal malignancy|rcc cancer
-118600007,malignant lymphoma,lymphoma nos|lymphatic malignancy|lymphoid cancer
 35489007,depressive disorder,depression|major depressive disorder|mdd|clinical depression|unipolar depression|depressive illness
 13746004,bipolar disorder,bipolar|manic depressive|bipolar affective disorder|bpad|bipolar disease
 58703003,postpartum depression,postnatal depression|postpartum depressive disorder|perinatal depression|postnatal depressive disorder
 38451003,persistent depressive disorder,dysthymia|dysthymic disorder|persistent depression|chronic depression|dysthymic disease
 310495003,treatment resistant depression,treatment-resistant depression|refractory depression|trd|treatment refractory depression
+118599009,hodgkin lymphoma,hodgkins lymphoma|hodgkin's lymphoma|hl|hodgkin disease|classical hodgkin lymphoma|reed-sternberg|hodgkin's disease
+42343007,congestive heart failure,chf|congestive cardiac failure|cardiac decompensation|biventricular failure|acute congestive heart failure
+417357006,sickle cell anemia,sickle cell disease|scd|hemoglobin ss disease|hbss|sickling disorder|sickle cell disorder|drepanocytosis

@@ -20,11 +20,6 @@
       "state": "New York",
       "country": "US"
     },
-    "the city": {
-      "canonical": "New York City",
-      "state": "New York",
-      "country": "US"
-    },
     "manhattan": {
       "canonical": "New York City",
       "state": "New York",
@@ -286,11 +281,6 @@
       "country": "US"
     },
     "d.c.": {
-      "canonical": "Washington DC",
-      "state": "District of Columbia",
-      "country": "US"
-    },
-    "washington": {
       "canonical": "Washington DC",
       "state": "District of Columbia",
       "country": "US"
@@ -1135,22 +1125,12 @@
       "state": "Michigan",
       "country": "US"
     },
-    "mayo clinic": {
-      "canonical": "Rochester",
-      "state": "Minnesota",
-      "country": "US"
-    },
     "palo alto": {
       "canonical": "Palo Alto",
       "state": "California",
       "country": "US"
     },
     "palo alto ca": {
-      "canonical": "Palo Alto",
-      "state": "California",
-      "country": "US"
-    },
-    "stanford": {
       "canonical": "Palo Alto",
       "state": "California",
       "country": "US"

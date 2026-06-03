@@ -16,6 +16,8 @@ from src.snomed_search.fhir_fallback import SNOMEDFallbackChain, FallbackResult
 
 log = logging.getLogger(__name__)
 
+_STOP_CONCEPTS: frozenset[str] = frozenset({"169230002"})
+
 
 class PgVectorCascadeStrategy:
     """SNOMED search strategy backed by PostgreSQL + pgvector with API fallback.
@@ -191,7 +193,9 @@ class PgVectorCascadeStrategy:
                     len(exact),
                     (time.monotonic() - t0) * 1000,
                 )
-                return self._deduplicate(exact)
+                results = self._deduplicate(exact)
+                results = [r for r in results if r.code not in _STOP_CONCEPTS]
+                return results
 
             # Step 2: synonym match — return immediately if found
             synonym = self._synonym_match(conn, query)
@@ -201,7 +205,9 @@ class PgVectorCascadeStrategy:
                     len(synonym),
                     (time.monotonic() - t0) * 1000,
                 )
-                return self._deduplicate(synonym)
+                results = self._deduplicate(synonym)
+                results = [r for r in results if r.code not in _STOP_CONCEPTS]
+                return results
 
             # Step 3–5: accumulate fuzzy + semantic + cache results
             results.extend(self._fuzzy_match(conn, query))
@@ -215,7 +221,9 @@ class PgVectorCascadeStrategy:
                     len(results),
                     (time.monotonic() - t0) * 1000,
                 )
-                return self._deduplicate(results)
+                results = self._deduplicate(results)
+                results = [r for r in results if r.code not in _STOP_CONCEPTS]
+                return results
 
         except psycopg2.OperationalError as e:
             log.error(
@@ -264,12 +272,14 @@ class PgVectorCascadeStrategy:
         finally:
             self._db_pool.putconn(write_conn)
 
+        results = self._deduplicate(results)
+        results = [r for r in results if r.code not in _STOP_CONCEPTS]
         log.debug(
             "search complete: %d deduplicated result(s) in %.1f ms",
             len(results),
             (time.monotonic() - t0) * 1000,
         )
-        return self._deduplicate(results)
+        return results
 
     def get_top_neighbors(
         self,

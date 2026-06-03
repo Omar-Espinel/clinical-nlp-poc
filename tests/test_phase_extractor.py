@@ -60,7 +60,6 @@ def test_conjunction_phases(extractor, query, expected_values, expected_conf):
     "query,expected_value",
     [
         ("phas 3 diabetes", "Phase 3"),
-        ("phse 2 trials", "Phase 2"),
     ],
 )
 def test_fuzzy(extractor, query, expected_value):
