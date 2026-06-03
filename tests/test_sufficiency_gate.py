@@ -138,13 +138,17 @@ def test_case1_strong_match_indication(gate):
 # ---------------------------------------------------------------------------
 
 def test_case2_bare_ambiguous(gate):
-    """'cancer' — bare trigger, no override → NOT sufficient."""
+    """'cancer' — has allow_parent_search=True → resolves via parent SNOMED, no clarification.
+
+    Prior to the parent-SNOMED fix this returned ambiguous_trigger. The new behavior is
+    correct: bare 'cancer' maps to SNOMED 363346000 (Malignant neoplastic disease).
+    """
     session = MockConversationSession()
     decision = gate.evaluate("cancer", session)
-    assert decision.sufficient is False
-    assert decision.reason == "ambiguous_trigger"
+    assert decision.sufficient is True
+    assert decision.reason == "ok_parent_snomed_used"
     assert decision.matched_entry is not None
-    assert "Lung Cancer" in decision.matched_entry.options
+    assert decision.matched_entry.snomed_parent_code == "363346000"
 
 
 # ---------------------------------------------------------------------------
@@ -174,11 +178,15 @@ def test_case4_override_case_insensitive(gate):
 # ---------------------------------------------------------------------------
 
 def test_case5_filters_but_ambiguous(gate):
-    """Bare 'cancer' still fires even with city/phase context."""
+    """Bare 'cancer' with city/phase context resolves via parent SNOMED — no clarification.
+
+    Now that cancer has allow_parent_search=True, adding filters does not change
+    the outcome: the parent SNOMED path is taken and the query proceeds as a search.
+    """
     session = MockConversationSession()
     decision = gate.evaluate("cancer in Boston phase 3", session)
-    assert decision.sufficient is False
-    assert decision.reason == "ambiguous_trigger"
+    assert decision.sufficient is True
+    assert decision.reason == "ok_parent_snomed_used"
 
 
 # ---------------------------------------------------------------------------
@@ -187,12 +195,16 @@ def test_case5_filters_but_ambiguous(gate):
 # ---------------------------------------------------------------------------
 
 def test_case6_multiple_ambiguous(gate, registry):
-    """Multiple ambiguous triggers — first one in JSON order fires."""
+    """Multiple ambiguous triggers — first one in JSON order fires via parent SNOMED.
+
+    Both 'heart' and 'lung' have allow_parent_search=True so the first trigger
+    encountered resolves to its parent SNOMED code rather than requesting clarification.
+    triggered_by still names the matched trigger entry.
+    """
     session = MockConversationSession()
     decision = gate.evaluate("heart and lung problems", session)
-    assert decision.sufficient is False
-    assert decision.reason == "ambiguous_trigger"
-    # triggered_by must be one of the registered triggers
+    assert decision.sufficient is True
+    assert decision.reason == "ok_parent_snomed_used"
     assert decision.triggered_by in registry._entries
 
 

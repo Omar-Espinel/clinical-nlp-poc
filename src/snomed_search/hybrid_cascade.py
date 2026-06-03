@@ -1,5 +1,6 @@
 """HybridCascadeStrategy: 4-stage cascade SNOMED search (exact → synonym → fuzzy → semantic)."""
 
+import json
 import logging
 import re
 from pathlib import Path
@@ -13,95 +14,16 @@ from src.snomed_search.base import SNOMEDMatch, SNOMEDSearchStrategy
 logger = logging.getLogger(__name__)
 
 # Canonical location per architect decision D4. snomed_resolver.py re-exports from here.
-ALIAS_DICTIONARY: dict[str, str] = {
-    "diabetes type 2": "type 2 diabetes mellitus",
-    "type 2 diabetes": "type 2 diabetes mellitus",
-    "type ii diabetes": "type 2 diabetes mellitus",
-    "adult onset diabetes": "type 2 diabetes mellitus",
-    "insulin resistance": "type 2 diabetes mellitus",
-    "t2 diabetes": "type 2 diabetes mellitus",
-    "type 1 diabetes": "type 1 diabetes mellitus",
-    "type i diabetes": "type 1 diabetes mellitus",
-    "juvenile diabetes": "type 1 diabetes mellitus",
-    "blood sugar": "blood glucose measurement",
-    "blood sugar management": "glucose monitoring",
-    "glucose management": "glucose monitoring",
-    "glucose control": "glucose monitoring",
-    "sugar control": "glucose monitoring",
-    "heart attack": "myocardial infarction",
-    "congestive heart failure": "heart failure",
-    "high blood pressure": "hypertension",
-    "elevated blood pressure": "hypertension",
-    "stroke": "cerebrovascular accident",
-    "brain stroke": "cerebrovascular accident",
-    "irregular heartbeat": "atrial fibrillation",
-    "a fib": "atrial fibrillation",
-    "afib": "atrial fibrillation",
-    "blood clot": "thrombosis",
-    "leg clot": "deep vein thrombosis",
-    "arterial disease": "peripheral arterial disease",
-    "cancer": "malignant neoplasm",
-    "tumor": "neoplasm",
-    "breast cancer": "malignant neoplasm of breast",
-    "lung cancer": "malignant neoplasm of lung",
-    "colon cancer": "malignant neoplasm of colon",
-    "colorectal cancer": "malignant neoplasm of colon",
-    "liver cancer": "hepatocellular carcinoma",
-    "pancreatic cancer": "malignant neoplasm of pancreas",
-    "prostate cancer": "malignant neoplasm of prostate",
-    "ovarian cancer": "malignant neoplasm of ovary",
-    "cervical cancer": "malignant neoplasm of cervix uteri",
-    "brain cancer": "malignant neoplasm of brain",
-    "brain tumor": "neoplasm of brain",
-    "skin cancer": "malignant melanoma",
-    "melanoma": "malignant melanoma",
-    "blood cancer": "leukemia",
-    "bone cancer": "malignant neoplasm of bone",
-    "kidney cancer": "malignant neoplasm of kidney",
-    "bladder cancer": "malignant neoplasm of urinary bladder",
-    "thyroid cancer": "malignant neoplasm of thyroid gland",
-    "stomach cancer": "malignant neoplasm of stomach",
-    "esophageal cancer": "malignant neoplasm of esophagus",
-    "lymphoma": "malignant lymphoma",
-    "alzheimers": "alzheimer disease",
-    "alzheimer's": "alzheimer disease",
-    "parkinsons": "parkinson disease",
-    "parkinson's": "parkinson disease",
-    "multiple sclerosis": "multiple sclerosis",
-    "als": "amyotrophic lateral sclerosis",
-    "lou gehrig disease": "amyotrophic lateral sclerosis",
-    "seizures": "epilepsy",
-    "copd": "chronic obstructive pulmonary disease",
-    "emphysema": "chronic obstructive pulmonary disease",
-    "lung disease": "lung disorder",
-    "pulmonary fibrosis": "idiopathic pulmonary fibrosis",
-    "chemo": "chemotherapy",
-    "bone marrow transplant": "stem cell transplant",
-    "radiation": "radiation therapy",
-    "surgery": "surgical procedure",
-    "biopsy": "biopsy procedure",
-    "blood test": "blood specimen collection",
-    "mri": "magnetic resonance imaging",
-    "ct scan": "computed tomography",
-    "pet scan": "positron emission tomography",
-    "rheumatoid arthritis": "rheumatoid arthritis",
-    "lupus": "systemic lupus erythematosus",
-    "ibd": "inflammatory bowel disease",
-    "crohns": "crohn disease",
-    "crohn's": "crohn disease",
-    "colitis": "ulcerative colitis",
-    "psoriatic arthritis": "psoriatic arthritis",
-    "hiv": "human immunodeficiency virus infection",
-    "aids": "acquired immunodeficiency syndrome",
-    "hepatitis b": "hepatitis b",
-    "hepatitis c": "hepatitis c",
-    "hbv": "hepatitis b",
-    "hcv": "hepatitis c",
-    "tuberculosis": "tuberculosis",
-    "covid": "covid-19",
-    "covid-19": "covid-19",
-    "coronavirus": "covid-19",
-}
+# Externalized to data/clinical_aliases.json (codebase data/*.json convention).
+_ALIAS_PATH = Path(__file__).parent.parent.parent / "data" / "clinical_aliases.json"
+
+
+def _load_alias_dictionary() -> dict[str, str]:
+    with open(_ALIAS_PATH, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+ALIAS_DICTIONARY: dict[str, str] = _load_alias_dictionary()
 
 FUZZY_CUTOFF_DEFAULT = 88
 SEMANTIC_THRESHOLD_DEFAULT = 0.82

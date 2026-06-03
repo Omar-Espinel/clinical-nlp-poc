@@ -115,3 +115,8 @@ concept_id,preferred_term,synonyms
 109989006,multiple myeloma,multiple myeloma disease|plasma cell cancer|myeloma disease
 363518003,malignant neoplasm of kidney,kidney carcinoma|renal malignancy|rcc cancer
 118600007,malignant lymphoma,lymphoma nos|lymphatic malignancy|lymphoid cancer
+35489007,depressive disorder,depression|major depressive disorder|mdd|clinical depression|unipolar depression|depressive illness
+13746004,bipolar disorder,bipolar|manic depressive|bipolar affective disorder|bpad|bipolar disease
+58703003,postpartum depression,postnatal depression|postpartum depressive disorder|perinatal depression|postnatal depressive disorder
+38451003,persistent depressive disorder,dysthymia|dysthymic disorder|persistent depression|chronic depression|dysthymic disease
+310495003,treatment resistant depression,treatment-resistant depression|refractory depression|trd|treatment refractory depression
