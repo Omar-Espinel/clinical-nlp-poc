@@ -9,7 +9,7 @@ DECOUPLING: Completely decoupled from strategy internals. Receives a
 frozenset[str] of known SNOMED terms at init time. Never imports or
 references any SNOMED strategy class.
 
-REJECTION RULE: Reject ONLY when ALL six signals are absent:
+REJECTION RULE: Reject ONLY when ALL seven signals are absent:
   A. SNOMED term signals (from known_terms frozenset)
   B. Person prefix signals
   C. Person suffix signals
@@ -18,6 +18,11 @@ REJECTION RULE: Reject ONLY when ALL six signals are absent:
   F. Token-based ambiguity signal (FIX 2): case-insensitive token NOT
      in _SECONDARY_TOKENS skiplist, NOT in any signal A-E category,
      and NOT part of an unambiguous multi-word geo phrase.
+  G. Capitalized token signal (Fix 6, Phase 1): a token of length >= 4
+     that starts with an uppercase letter AND is not in _FUNCTION_WORDS
+     AND is not a geo stoplist term. Person prefix/suffix signals (B, C)
+     are preserved independently; phase tokens (Phase 1/2/3/4 or I/II/III/IV)
+     also fire Signal G. No SNOMED lookup is performed here.
 
 HIPAA: query text never logged. Only signal_count and passed are logged.
 """
@@ -67,7 +72,7 @@ _SECONDARY_TOKENS: frozenset[str] = frozenset({
     "criteria", "field", "fields", "value", "values",
 })
 
-# Tokens with length below this threshold cannot fire Signal F.
+# Tokens with length below this threshold cannot fire Signal F or G.
 # 4 chars is enough to skip noise like "fpe", "low", "abc".
 MIN_TOKEN_LEN_FOR_F: int = 4
 
@@ -76,6 +81,18 @@ _SNOMED_SCAN_CAP: int = 500
 
 # Word pattern: bounded letter/apostrophe token (ReDoS-safe)
 _WORD_PATTERN = re.compile(r"\b[A-Za-z][A-Za-z'\-]{1,30}\b")
+
+# Signal G: function-word skiplist — capitalized tokens that are NOT name/subject signals.
+# These are common English words that happen to be capitalized at the start of a sentence
+# or in title-case queries, and should NOT count as a capitalized token signal.
+_FUNCTION_WORDS: frozenset[str] = frozenset({
+    "with", "from", "that", "this", "have", "been", "will", "what", "when",
+    "where", "which", "there", "their", "about", "more", "also", "into",
+    "than", "then", "some", "could", "would", "should", "other", "after",
+    "find", "show", "pull", "give", "search", "studies", "trials", "research",
+    "study",
+})
+
 
 
 @dataclass
@@ -196,6 +213,33 @@ class PreflightMandatoryCheck:
                     return True
         return False
 
+    def _signal_g_capitalized(self, query: str, query_lower: str) -> bool:
+        """Fix 6 Signal D (new addition): a capitalized token of length >= 4 that is
+        NOT in _FUNCTION_WORDS and NOT an unambiguous geo stoplist term.
+
+        Capitalization is checked against the original query (not lowercased) so that
+        genuine proper nouns (e.g. "Gout", "Holmes") fire even in mixed-case queries.
+        No SNOMED lookup is performed here.
+        """
+        matches = list(_WORD_PATTERN.finditer(query))
+        for idx, m in enumerate(matches):
+            token = m.group()
+            if len(token) < MIN_TOKEN_LEN_FOR_F:
+                continue
+            # Must start with uppercase letter
+            if not token[0].isupper():
+                continue
+            token_lower = token.lower()
+            # Skip function words
+            if token_lower in _FUNCTION_WORDS:
+                continue
+            # Skip unambiguous geo terms
+            if self._is_token_unambiguous_geo(matches, idx):
+                continue
+            # Survived — fire Signal G (spec's Signal D)
+            return True
+        return False
+
     def _signal_f_token(self, query: str, query_lower: str) -> bool:
         """FIX 2: token-based ambiguity signal. Case-insensitive scan with
         _SECONDARY_TOKENS skiplist, length filter, and multi-word geo window.
@@ -245,6 +289,8 @@ class PreflightMandatoryCheck:
         if self._signal_e_context(query_lower):
             signal_count += 1
         if self._signal_f_token(query, query_lower):
+            signal_count += 1
+        if self._signal_g_capitalized(query, query_lower):
             signal_count += 1
 
         result = PreflightResult(

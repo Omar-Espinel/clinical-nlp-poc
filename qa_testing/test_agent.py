@@ -203,7 +203,7 @@ def evaluate_case(tc: dict, pipeline: NLPPipeline,
         result.actual_codes = deduped
         result.actual_city  = output.filters.city.value
         result.actual_state = list(output.filters.state.values)
-        result.actual_phase = output.filters.phase.value
+        result.actual_phase = "|".join(output.filters.phase.values) if output.filters.phase.values else None
 
     # ── Evaluate ──────────────────────────────────────────────────────────────
     failures = []

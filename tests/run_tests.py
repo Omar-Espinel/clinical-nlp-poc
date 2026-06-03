@@ -66,7 +66,7 @@ def run_tests() -> int:
             "investigator_name": result.filters.investigator_name.value,
             "site_name": result.filters.site_name.value,
             "city": result.filters.city.value,
-            "phase": result.filters.phase.value,
+            "phase": "|".join(result.filters.phase.values) if result.filters.phase.values else None,
         }
         result_state_values = result.filters.state.values  # list[str]
 

@@ -638,7 +638,96 @@ class MetricIntentResolver:
             if m.canonical_field not in best or m.confidence > best[m.canonical_field].confidence:
                 best[m.canonical_field] = m
 
-        return sorted(best.values(), key=lambda m: m.span[0])
+        # Fix 4 — Context window validation: a match is only valid when at least one
+        # qualifying signal is present within ±10 tokens of the matched region:
+        #   (a) an explicit numeric value (digit sequence, incl. ordinals like "1st"),
+        #   (b) a comparator phrase from _CONTEXT_COMPARATORS (or field implied_op_map key),
+        #   (c) the metric field's canonical_label verbatim (case-insensitive).
+        # Applied to fuzzy matches and short single-token AC matches that lack a
+        # clear measurement context. Exact multi-word AC synonym matches are kept as-is
+        # because the user explicitly referenced the metric field by name.
+        validated: list[MetricMatch] = []
+        tokens_list = query.split()
+        for m in best.values():
+            # Exact multi-word AC matches are trusted as intentional references
+            if m.match_source == "ac_synonym" and len(m.matched_text.split()) >= 2:
+                validated.append(m)
+                continue
+            if self._has_metric_context(query, tokens_list, m):
+                validated.append(m)
+
+        return sorted(validated, key=lambda m: m.span[0])
+
+    # Comparator phrases for Fix 4 context window check (normalized lowercase)
+    _CONTEXT_COMPARATORS: frozenset[str] = frozenset({
+        "more than", "less than", "at least", "under", "over",
+        "fewer than", "greater than", "no more than", "no fewer than",
+        "up to", "minimum", "maximum",
+    })
+
+    @staticmethod
+    def _has_metric_context(
+        query: str,
+        tokens_list: list[str],
+        m: MetricMatch,
+    ) -> bool:
+        """Return True if a qualifying context signal exists within ±10 tokens.
+
+        Signal (a): any digit sequence (including ordinals like "1st", "2nd").
+        Signal (b): a comparator phrase from _CONTEXT_COMPARATORS.
+        Signal (c): the canonical_label of the metric field verbatim.
+        """
+        # Locate the approximate token index for the matched span
+        span_start, span_end = m.span
+        # Build a token-position map for window extraction
+        char_pos = 0
+        token_positions: list[tuple[int, int]] = []
+        for tok in tokens_list:
+            idx = query.find(tok, char_pos)
+            if idx == -1:
+                idx = char_pos
+            token_positions.append((idx, idx + len(tok)))
+            char_pos = idx + len(tok)
+
+        # Find which token(s) overlap the span
+        matched_indices: list[int] = []
+        for i, (ts, te) in enumerate(token_positions):
+            if ts < span_end and te > span_start:
+                matched_indices.append(i)
+
+        if not matched_indices:
+            # Fallback: use full query for context check
+            center = 0
+        else:
+            center = matched_indices[0]
+
+        window_start = max(0, center - 10)
+        window_end = min(len(tokens_list), center + 10 + 1)
+        window_tokens = tokens_list[window_start:window_end]
+        window_text = " ".join(window_tokens).lower()
+
+        # Signal (a): digit sequence (incl. ordinals)
+        if re.search(r'\d', window_text):
+            return True
+
+        # Signal (b): comparator phrase
+        for phrase in MetricIntentResolver._CONTEXT_COMPARATORS:
+            if phrase in window_text:
+                return True
+
+        # Signal (b2): field-specific implied operator keys also qualify as context signals.
+        # This preserves matches triggered by domain-specific intensifiers like
+        # "fast" → lt, "slow" → gt, "high" → gt, "low" → lt which are semantically
+        # equivalent to a comparator directive for that field.
+        for key in m.implied_op_map:
+            if key and re.search(r'\b' + re.escape(key) + r'\b', window_text):
+                return True
+
+        # Signal (c): canonical_label verbatim (case-insensitive)
+        if m.canonical_label.lower() in window_text:
+            return True
+
+        return False
 
     @staticmethod
     def _scan_implied_op(

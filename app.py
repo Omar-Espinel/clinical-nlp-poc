@@ -9,7 +9,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from src.pipeline import NLPPipeline
-from src.assembler import NLPOutput, ClarificationOutput
+from src.assembler import NLPOutput, ClarificationOutput, QuerySummary
 from src.conversation import ConversationSession
 from src.preprocessor import PreprocessorError
 from src.exceptions import ExtractionError, PipelineError, LLMProviderError
@@ -111,8 +111,47 @@ def _check_rate_limit() -> bool:
     return True
 
 
-def _render_nlp_output(output: NLPOutput) -> None:
+def _render_query_summary(qs: QuerySummary, canonical_query: Optional[str]) -> None:
+    """Render QuerySummary interpretation label and warning flags above results.
+
+    label and flag messages are displayed as plain text (html.escape applied again
+    for defense-in-depth). Never passes query_summary fields to any logger.
+    """
+    # Defense-in-depth: re-escape the label even though assembler already escaped it
+    safe_label = html.escape(qs.label)
+    if safe_label:
+        st.markdown(
+            f'<div style="padding:8px 12px;background:#f0f4f8;border-radius:6px;'
+            f'font-size:0.95em;color:#2c3e50;">'
+            f'<strong>Interpreting:</strong> {safe_label}</div>',
+            unsafe_allow_html=True,
+        )
+    if qs.has_warnings:
+        for flag in qs.flags:
+            # flag.message is a server-defined constant — no user content
+            st.caption(f"⚠️ {flag.message} ({flag.field})")
+        if qs.unrecognized_terms:
+            # unrecognized_terms are HTML-escaped by the assembler
+            terms_display = ", ".join(qs.unrecognized_terms)
+            st.caption(f"ℹ️ Not recognized: {terms_display}")
+
+    if canonical_query is not None:
+        # "Edit this search" allows the user to refine the pre-filled input.
+        # Stores canonical_query in session state; main() picks it up on next rerun.
+        if st.button("✏️ Edit this search", key="edit_search_btn"):
+            # canonical_query stored in session_state for pre-population only;
+            # never logged here.
+            st.session_state["edit_query"] = canonical_query
+            st.rerun()
+
+
+def _render_nlp_output(output: NLPOutput, canonical_query: Optional[str] = None) -> None:
     """Render NLPOutput as two-column SNOMED + filters view."""
+    # ── Query summary (purely informational — does NOT gate results display) ──
+    if output.query_summary is not None:
+        _render_query_summary(output.query_summary, canonical_query)
+        st.markdown("")  # spacing
+
     col_left, col_right = st.columns(2)
     with col_left:
         st.subheader("🧬 SNOMED Terms")
@@ -138,12 +177,13 @@ def _render_nlp_output(output: NLPOutput) -> None:
             ("🧑 Investigator", filters.investigator_name),
             ("🏥 Site", filters.site_name),
             ("🏙️ City", filters.city),
-            ("🔬 Phase", filters.phase),
         ]
         state_non_empty = bool(filters.state.values)
+        phase_non_empty = bool(filters.phase.values)
         non_null_count = (
             sum(1 for _, f in scalar_items if f.value)
             + (1 if state_non_empty else 0)
+            + (1 if phase_non_empty else 0)
         )
         st.metric("Filters Found", non_null_count)
 
@@ -154,6 +194,17 @@ def _render_nlp_output(output: NLPOutput) -> None:
                 conf_val = min(max(float(field.confidence), 0.0), 1.0)
                 st.progress(conf_val, text=f"{conf_val * 100:.0f}% confidence")
                 st.divider()
+
+        if phase_non_empty:
+            st.markdown("**🔬 Phase**")
+            conf_val = min(max(float(filters.phase.confidence), 0.0), 1.0)
+            if len(filters.phase.values) > 1:
+                for pv in filters.phase.values:
+                    st.markdown(f"- {_safe(pv)}", unsafe_allow_html=True)
+            else:
+                st.markdown(f"**{_safe(filters.phase.values[0])}**", unsafe_allow_html=True)
+            st.progress(conf_val, text=f"{conf_val * 100:.0f}% confidence")
+            st.divider()
 
         if state_non_empty:
             st.markdown("**📍 State**")
@@ -203,10 +254,9 @@ def _render_nlp_output(output: NLPOutput) -> None:
             filters.investigator_name,
             filters.site_name,
             filters.city,
-            filters.phase,
         ]
         if f.value
-    ) + (1 if filters.state.values else 0)
+    ) + (1 if filters.state.values else 0) + (1 if filters.phase.values else 0)
     m3.metric("Filters Found", non_null)
 
     with st.expander("📋 Structured Output (JSON)"):
@@ -272,7 +322,9 @@ def _render_turn_result(turn_index: int, turn) -> None:
         outputs = st.session_state.get("turn_outputs", {})
         output = outputs.get(turn_index)
         if output is not None and isinstance(output, NLPOutput):
-            _render_nlp_output(output)
+            # Pass canonical_query from the turn for the "Edit this search" button
+            canonical_q = getattr(turn, "canonical_query", None)
+            _render_nlp_output(output, canonical_query=canonical_q)
         else:
             st.info("Results processed successfully.")
     else:
@@ -370,6 +422,13 @@ def main() -> None:
     """Main Streamlit application — chat UI."""
     _init_session_state()
 
+    # Handle "Edit this search" pre-population: if a previous turn set edit_query,
+    # read and clear it so the chat input starts with that text.
+    # edit_query is canonical_query — never logged here.
+    prefill_query: Optional[str] = None
+    if "edit_query" in st.session_state:
+        prefill_query = st.session_state.pop("edit_query")
+
     pipeline = load_pipeline()
     render_sidebar(pipeline_ready=pipeline is not None)
 
@@ -410,7 +469,23 @@ def main() -> None:
         return
 
     # ── Chat input for next turn ──────────────────────────────────────────────
-    user_input = st.chat_input("Type your clinical research query...")
+    # prefill_query comes from "Edit this search" — set in session_state by _render_query_summary.
+    # st.chat_input does not support a value parameter in this Streamlit version, so when
+    # prefill_query is set we display a text_input with the pre-populated value instead.
+    # Never log prefill_query (it is canonical_query — user-derived).
+    if prefill_query is not None:
+        st.info("✏️ Your previous query has been pre-filled below for editing.")
+        user_input = st.text_input(
+            "Edit your query:",
+            value=prefill_query,
+            key="edit_query_input",
+        )
+        if st.button("Submit edited query", key="submit_edit_btn"):
+            pass  # user_input is already set
+        else:
+            user_input = None  # don't submit until button clicked
+    else:
+        user_input = st.chat_input("Type your clinical research query...")
     if user_input and user_input.strip():
         _run_pipeline_turn_and_capture(pipeline, user_input.strip(), session, turn_outputs)
 

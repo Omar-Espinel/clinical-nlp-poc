@@ -27,7 +27,7 @@ def fmt(out) -> str:
         site = out.filters.site_name.value
         city = out.filters.city.value
         state = out.filters.state.values
-        phase = out.filters.phase.value
+        phase = out.filters.phase.values
         snomed_n = len(out.snomed_terms)
         return (
             f"SEARCH inv={inv!r} site={site!r} city={city!r} "

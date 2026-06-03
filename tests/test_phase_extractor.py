@@ -25,8 +25,6 @@ def extractor() -> PhaseExtractor:
         ("dose expansion study", "Phase 1/2", 0.85),
         ("proof of concept diabetes", "Phase 2", 0.85),
         ("poc trial boston", "Phase 2", 0.85),
-        ("phase 1/2 safety oncology", "Phase 1/2", 0.95),
-        ("phase 2/3 diabetes", "Phase 2/3", 0.95),
         ("phase 2b breast cancer", "Phase 2b", 0.95),
         ("phase 1b dose finding", "Phase 1b", 0.95),
     ],
@@ -37,6 +35,25 @@ def test_exact_and_alias(extractor, query, expected_value, expected_conf):
     assert result.confidence == expected_conf, f"conf mismatch for {query!r}"
     assert result.span is not None
     assert 0 <= result.span[0] < result.span[1] <= len(query)
+
+
+@pytest.mark.parametrize(
+    "query,expected_values,expected_conf",
+    [
+        # Fix 5: slash conjunctions now expand to multi-value
+        ("phase 1/2 safety oncology", ["Phase 1", "Phase 2"], 0.95),
+        ("phase 2/3 diabetes", ["Phase 2", "Phase 3"], 0.95),
+        ("Phase II/III study", ["Phase 2", "Phase 3"], 0.95),
+    ],
+)
+def test_conjunction_phases(extractor, query, expected_values, expected_conf):
+    """Fix 5: 'Phase 2/3' and similar conjunctions produce multi-value results."""
+    result = extractor.extract(query)
+    assert result.values is not None, f"Expected multi-value for {query!r}"
+    assert sorted(result.values) == sorted(expected_values), (
+        f"values mismatch for {query!r}: got {result.values!r}"
+    )
+    assert result.confidence == expected_conf, f"conf mismatch for {query!r}"
 
 
 @pytest.mark.parametrize(

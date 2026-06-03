@@ -229,8 +229,14 @@ class ConversationSession(BaseModel):
             if state_obj is not None:
                 states = getattr(state_obj, "values", []) or []
                 parts.extend(states)
-            if getattr(getattr(last_filters, "phase", None), "value", None):
-                parts.append(last_filters.phase.value)
+            phase_obj = getattr(last_filters, "phase", None)
+            if phase_obj is not None:
+                phase_vals = getattr(phase_obj, "values", None)
+                if phase_vals:
+                    parts.extend(phase_vals)
+                elif getattr(phase_obj, "value", None):
+                    # Backward-compat with duck-typed shims that still use .value
+                    parts.append(phase_obj.value)
             if getattr(getattr(last_filters, "investigator_name", None), "value", None):
                 parts.append(last_filters.investigator_name.value)
             if getattr(getattr(last_filters, "site_name", None), "value", None):

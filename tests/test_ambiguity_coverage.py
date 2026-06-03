@@ -564,8 +564,8 @@ class TestB6RegexInjectionFix:
             max_options=5,
         )
         decision = SufficiencyDecision(
-            sufficient=False,
-            reason="ambiguous_trigger",
+            sufficient=True,
+            reason="ok_no_trigger",
             triggered_by="cancer",
             matched_entry=entry,
         )
@@ -608,8 +608,8 @@ class TestB6RegexInjectionFix:
             max_options=5,
         )
         decision = SufficiencyDecision(
-            sufficient=False,
-            reason="ambiguous_trigger",
+            sufficient=True,
+            reason="ok_no_trigger",
             triggered_by="cancer",
             matched_entry=entry,
         )

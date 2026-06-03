@@ -146,6 +146,16 @@ def _build_derived_entries(csv_path: Path) -> dict[str, "AmbiguousEntry"]:
         if len(sources) >= MIN_DERIVED_TERM_FREQUENCY
     }
 
+    # Fix 3: exclude tokens that ARE themselves a full preferred_term (exact match).
+    # This prevents e.g. "leukemia" from becoming an ambiguous trigger because
+    # "leukemia" is already an unambiguous, directly searchable CSV term.
+    preferred_term_set: frozenset[str] = frozenset(unique_terms)
+    qualified = {
+        token: sources
+        for token, sources in qualified.items()
+        if token.strip().lower() not in preferred_term_set
+    }
+
     # Build a flat set of all synonyms containing each token for override derivation.
     # This ensures compound terms like "lung cancer" (a synonym) suppress the derived
     # "lung" trigger — matching the same suppression logic as _derive_overrides.
@@ -322,7 +332,7 @@ def _any_filter_set(filters) -> bool:
     - filters.site_name.value          (str | None)
     - filters.city.value               (str | None)
     - filters.state.values             (list[str])
-    - filters.phase.value              (str | None)
+    - filters.phase.values             (list[str] — PhaseFilter)
 
     Also checks resolved metric fields (rev2 M18).
     HIPAA: filter values are never logged or inspected beyond truthiness.
@@ -332,7 +342,7 @@ def _any_filter_set(filters) -> bool:
         or filters.site_name.value
         or filters.city.value
         or filters.state.values      # list[str] — non-empty list is truthy
-        or filters.phase.value
+        or filters.phase.values      # list[str] — non-empty list is truthy
     ):
         return True
     # NEW: check metric fields (rev2 M18)
@@ -356,7 +366,7 @@ def _count_set_filters(filters) -> int:
         count += 1
     if filters.state.values:
         count += 1
-    if filters.phase.value:
+    if filters.phase.values:
         count += 1
     # NEW: each metric field with a resolved value counts as one filter (rev2 M17)
     for mf in getattr(filters, "metric_fields", {}).values():
@@ -425,15 +435,12 @@ class AmbiguousEntry(BaseModel):
 
 _KNOWN_REASONS: frozenset[str] = frozenset({
     "ok_no_trigger",
-    "ambiguous_trigger",
     "max_turns_reached",
     "ok_post_extraction",
-    "filters_without_condition",
     "embedding_ambiguity",
     "legacy_bypass",
     "metric_without_value",
     "missing_mandatory_term",
-    "name_ambiguity",
     "ok_parent_snomed_used",  # pre-extraction gate passed via parent SNOMED resolution
 })
 
@@ -450,16 +457,19 @@ class SufficiencyDecision(BaseModel):
     reason: str
     # Reason enum values:
     #   "ok_no_trigger"           — pre-extraction gate passed
-    #   "ambiguous_trigger"       — pre-extraction gate fired
     #   "max_turns_reached"       — escape valve forced sufficient=True
     #   "ok_post_extraction"      — post-extraction check passed
-    #   "filters_without_condition" — post-extraction check fired
-    #   "embedding_ambiguity"     — Layer 2 embedding gate fired (step 5b)
+    #   "embedding_ambiguity"     — Layer 2 embedding gate (class kept; not used in pipeline)
     #   "legacy_bypass"           — legacy run() shim bypass
-    #   "metric_without_value"    — MetricAmbiguityGate fired (step 7b)
+    #   "metric_without_value"    — MetricAmbiguityGate (class kept; not used in pipeline)
+    #   "missing_mandatory_term"  — preflight or post-extraction mandatory term absent
+    #   "ok_parent_snomed_used"   — pre-extraction gate passed via parent SNOMED resolution
 
     triggered_by: Optional[str] = None          # trigger key (not logged)
     matched_entry: Optional[AmbiguousEntry] = None
+    # Phase 3 carrier: names that were ambiguous post-extraction but no longer block.
+    # Nothing consumes this yet; included here for forward compatibility.
+    ambiguous_name_flags: Optional[list[str]] = None
 
     @field_validator("reason")
     @classmethod
@@ -825,6 +835,9 @@ class SufficiencyGate:
             return SufficiencyDecision(sufficient=True, reason="max_turns_reached")
 
         # Rule 2: registry trigger lookup (with override-term filtering).
+        # Phase 2: ambiguous triggers no longer block — proceed sufficient=True.
+        # If allow_parent_search is set, inject parent SNOMED for downstream use.
+        # If not, return ok_no_trigger so extraction proceeds on the bare query.
         hit = self._registry.find_trigger(canonical_query)
         if hit is not None:
             if hit.use_parent_snomed and hit.entry.snomed_parent_code:
@@ -844,19 +857,17 @@ class SufficiencyGate:
                     matched_entry=hit.entry,
                 )
             else:
+                # Phase 2: entry without allow_parent_search — proceed as sufficient.
+                # Previously this returned ambiguous_trigger (sufficient=False); now we
+                # let extraction run directly on the query as-is.
                 logger.info(
-                    "SufficiencyGate.evaluate: sufficient=False "
-                    "reason=ambiguous_trigger category=%s session_id=%s",
+                    "SufficiencyGate.evaluate: sufficient=True "
+                    "reason=ok_no_trigger category=%s session_id=%s",
                     hit.entry.category,
                     session.session_id,
                     # NOT logged: trigger value, canonical_query, entry.options
                 )
-                return SufficiencyDecision(
-                    sufficient=False,
-                    reason="ambiguous_trigger",
-                    triggered_by=hit.trigger,
-                    matched_entry=hit.entry,
-                )
+                return SufficiencyDecision(sufficient=True, reason="ok_no_trigger")
 
         # Rule 3: default — sufficient.
         logger.info(
@@ -881,21 +892,17 @@ class SufficiencyGate:
 
         HIPAA: filter values, name strings, query text, option strings are NOT logged.
         """
-        # BRANCH A — Name ambiguity (highest priority)
+        # BRANCH A — Name ambiguity: Phase 2 no longer blocks. Carry flag values
+        # for Phase 3 consumers. Extraction proceeds as sufficient=True.
+        # ambiguous_name_flags carries the text values so Phase 3 can surface them.
+        name_flags: Optional[list[str]] = None
         if ambiguous_names:
-            entry = self._build_name_ambiguity_entry(ambiguous_names)
+            name_flags = [getattr(n, "text", str(n)) for n in ambiguous_names]
             logger.info(
-                "SufficiencyGate.post_extraction_check: branch=A sufficient=False "
-                "reason=name_ambiguity qualifying_count=0 has_inv=False has_site=False "
-                "ambiguous_count=%d snomed_unmet_count=0",
+                "SufficiencyGate.post_extraction_check: branch=A phase2_passthrough "
+                "reason=ok_post_extraction ambiguous_count=%d snomed_unmet_count=0",
                 len(ambiguous_names),
                 # NOT logged: name strings, option strings, filter values
-            )
-            return SufficiencyDecision(
-                sufficient=False,
-                reason="name_ambiguity",
-                triggered_by=None,
-                matched_entry=entry,
             )
 
         # BRANCH B — SNOMED-required metric unmet.
@@ -938,37 +945,48 @@ class SufficiencyGate:
             logger.info(
                 "SufficiencyGate.post_extraction_check: branch=C1 sufficient=True "
                 "reason=ok_post_extraction qualifying_count=%d has_inv=%s has_site=%s "
-                "ambiguous_count=0 snomed_unmet_count=%d",
+                "ambiguous_count=%d snomed_unmet_count=%d",
                 len(qualifying), has_investigator, has_site,
+                len(name_flags) if name_flags else 0,
                 len(snomed_required_unmet) if snomed_required_unmet else 0,
                 # NOT logged: filter values, snomed display strings
             )
-            return SufficiencyDecision(sufficient=True, reason="ok_post_extraction")
+            return SufficiencyDecision(
+                sufficient=True, reason="ok_post_extraction",
+                ambiguous_name_flags=name_flags,
+            )
 
         # C1b: no qualifying SNOMED, but has investigator or site
         if has_investigator or has_site:
             logger.info(
                 "SufficiencyGate.post_extraction_check: branch=C1b sufficient=True "
                 "reason=ok_post_extraction qualifying_count=0 has_inv=%s has_site=%s "
-                "ambiguous_count=0 snomed_unmet_count=%d",
+                "ambiguous_count=%d snomed_unmet_count=%d",
                 has_investigator, has_site,
+                len(name_flags) if name_flags else 0,
                 len(snomed_required_unmet) if snomed_required_unmet else 0,
-            )
-            return SufficiencyDecision(sufficient=True, reason="ok_post_extraction")
-
-        # C2: no SNOMED, has any filter → old behavior
-        if _any_filter_set(filters):
-            logger.info(
-                "SufficiencyGate.post_extraction_check: branch=C2 sufficient=False "
-                "reason=filters_without_condition qualifying_count=0 has_inv=%s has_site=%s "
-                "ambiguous_count=0 snomed_unmet_count=%d",
-                has_investigator, has_site,
-                len(snomed_required_unmet) if snomed_required_unmet else 0,
-                # NOT logged: filter values, snomed display strings
             )
             return SufficiencyDecision(
-                sufficient=False, reason="filters_without_condition",
-                triggered_by=None, matched_entry=self._default_condition_prompt,
+                sufficient=True, reason="ok_post_extraction",
+                ambiguous_name_flags=name_flags,
+            )
+
+        # C2 (Phase 2 rework): filters present but SNOMED empty no longer blocks.
+        # Return ok_post_extraction so downstream assembly proceeds with whatever
+        # filters were extracted. C3 fires only when absolutely nothing is present.
+        if _any_filter_set(filters):
+            logger.info(
+                "SufficiencyGate.post_extraction_check: branch=C2 phase2_passthrough "
+                "reason=ok_post_extraction qualifying_count=0 has_inv=%s has_site=%s "
+                "ambiguous_count=%d snomed_unmet_count=%d",
+                has_investigator, has_site,
+                len(name_flags) if name_flags else 0,
+                len(snomed_required_unmet) if snomed_required_unmet else 0,
+                # NOT logged: filter values
+            )
+            return SufficiencyDecision(
+                sufficient=True, reason="ok_post_extraction",
+                ambiguous_name_flags=name_flags,
             )
 
         # C3: nothing — full mandatory term missing

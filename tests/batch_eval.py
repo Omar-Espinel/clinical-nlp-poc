@@ -272,7 +272,7 @@ def _evaluate_nlp_output(
     result_row["processing_time_ms"] = output.metadata.processing_time_ms
     result_row["city_found"] = output.filters.city.value or ""
     result_row["state_found"] = "|".join(output.filters.state.values)
-    result_row["phase_found"] = output.filters.phase.value or ""
+    result_row["phase_found"] = "|".join(output.filters.phase.values) if output.filters.phase.values else ""
     result_row["investigator_found"] = output.filters.investigator_name.value or ""
     result_row["site_found"] = output.filters.site_name.value or ""
 
@@ -322,7 +322,7 @@ def _evaluate_nlp_output(
 
     _check_filter("city",         output.filters.city.value,              row.get("expected_city", ""))
     _check_state(                                                          row.get("expected_state", ""))
-    _check_filter("phase",        output.filters.phase.value,             row.get("expected_phase", ""))
+    _check_filter("phase",        "|".join(output.filters.phase.values) if output.filters.phase.values else "", row.get("expected_phase", ""))
     _check_filter("investigator", output.filters.investigator_name.value, row.get("expected_investigator_name", ""))
     _check_filter("site",         output.filters.site_name.value,         row.get("expected_site_name", ""))
 

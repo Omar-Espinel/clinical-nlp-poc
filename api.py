@@ -6,12 +6,39 @@ Routes
     GET    /health/ready             Readiness probe. No auth; 503 until pipeline is initialized.
     POST   /v1/query                 Main NLP query endpoint. Auth required. Accepts
                                       {query, session_id?}; returns {result, session_id,
-                                      processing_time_ms} where result is NLPOutput |
-                                      ClarificationOutput (discriminated on `type`).
+                                      processing_time_ms, api_version} where result is
+                                      NLPOutput | ClarificationOutput (discriminated on `type`).
     DELETE /v1/session/{session_id}  Clear a conversation session. Auth required.
     GET    /v1/autocomplete          Clinical query autocomplete. Auth required. Query params:
                                       q (prefix 3 to 100 chars), limit (1 to 10, default 7).
                                       Returns ranked suggestion array. Rate: 30 per 10 seconds per IP.
+
+API version
+-----------
+    The /v1/query response envelope now includes api_version: "2.1" as an optional field.
+    Existing consumers that do not read this field are unaffected.
+
+New field in search results (Phase 3)
+--------------------------------------
+    NLPOutput now includes an optional query_summary field of type QuerySummary.
+    It contains a human-readable label, interpreted_terms, interpreted_filters, flags,
+    unrecognized_terms, has_warnings, flag_count, and unrecognized_term_count.
+    query_summary is purely additive — existing consumers can safely ignore it.
+    The field is absent (null) only when canonical_query was unavailable at assembly time.
+
+Filter shape note (Phase 1 change)
+-----------------------------------
+    filters.phase has changed from {"value": "Phase 3", "confidence": 0.95}
+    to {"values": ["Phase 2", "Phase 3"], "confidence": 0.95} (PhaseFilterOutput).
+    Single-phase queries yield a one-element list; conjunction queries
+    (e.g. "Phase 2 or 3", "Phase 2/3") yield multiple elements.
+
+Clarification type (Phase 2 change)
+-------------------------------------
+    type:"clarification" now ONLY occurs for preprocessor safety rejections and genuine
+    preflight failures (missing mandatory term). Ambiguous query terms no longer cause
+    clarification turns; the pipeline always returns type:"search" for clinical queries
+    that pass safety and preflight checks.
 
 Auth
 ----
@@ -38,7 +65,7 @@ import collections
 from pathlib import Path
 from collections import OrderedDict
 from contextlib import asynccontextmanager
-from typing import Annotated, Union
+from typing import Annotated, Optional, Union
 
 from fastapi import FastAPI, HTTPException, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -254,6 +281,9 @@ class QueryResponse(BaseModel):
     result: ResponseOutput
     session_id: str
     processing_time_ms: int
+    # api_version is optional so existing consumers reading only result/session_id/
+    # processing_time_ms see no schema change.
+    api_version: Optional[str] = None
 
 class AutocompleteSuggestionItem(BaseModel):
     display: str
@@ -334,6 +364,7 @@ async def run_query(req: QueryRequest):
         result=result,
         session_id=session.session_id,
         processing_time_ms=elapsed,
+        api_version="2.1",
     )
 
 

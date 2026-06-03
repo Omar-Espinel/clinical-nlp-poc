@@ -35,13 +35,24 @@ class StateFilter(BaseModel):
     is_region: bool
 
 
+class PhaseFilter(BaseModel):
+    """Multi-value phase filter — supports conjunctions like 'Phase 2 or 3'.
+
+    Shape: {"values": ["Phase 2", "Phase 3"], "confidence": 0.95}
+    Replaces the old FilterField for phase throughout the pipeline.
+    """
+    model_config = ConfigDict(frozen=True)
+    values: list[str]
+    confidence: float
+
+
 class ExtractedFilters(BaseModel):
     model_config = ConfigDict(frozen=True)
     investigator_name: FilterField
     site_name: FilterField
     city: FilterField
     state: StateFilter
-    phase: FilterField
+    phase: PhaseFilter
     raw_response_length: int
     metric_fields: dict[str, MetricFilterOutput] = Field(default_factory=dict)
 
@@ -154,6 +165,16 @@ class DeterministicFilterExtractor:
             )
 
         # Step 8: assemble ExtractedFilters
+        # Expand conjunction phases (e.g. "Phase 2/3") into multi-value PhaseFilter
+        if phase_result.value is not None:
+            phase_values = phase_result.values if phase_result.values else [phase_result.value]
+        else:
+            phase_values = []
+        phase_filter = PhaseFilter(
+            values=phase_values,
+            confidence=phase_result.confidence,
+        )
+
         filters = ExtractedFilters(
             investigator_name=FilterField(
                 value=name_result.investigator_name,
@@ -168,10 +189,7 @@ class DeterministicFilterExtractor:
                 confidence=0.90 if city_raw else 0.0,
             ),
             state=state_filter,
-            phase=FilterField(
-                value=phase_result.value,
-                confidence=phase_result.confidence,
-            ),
+            phase=phase_filter,
             raw_response_length=len(canonical_query),
             metric_fields=assembler_result.metric_fields,
         )

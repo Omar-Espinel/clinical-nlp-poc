@@ -25,6 +25,36 @@ CONFIDENCE_THRESHOLD: float = 0.60
 FIRM_THRESHOLD: float = 0.75
 INSTITUTION_FUZZY_THRESHOLD: int = 82
 
+# Phrases stripped from the START of the query before name extraction.
+# Applied greedily left-to-right (case-insensitive) until no prefix matches.
+# Ordered longest-first so multi-word phrases win over their prefixes.
+_REQUEST_PREFIX_PHRASES: tuple[str, ...] = (
+    "can you",
+    "find me",
+    "pull up",
+    "show me",
+    "i need",
+    "i want",
+    "looking for",
+    "please",
+    "get me",
+    "give me",
+    "search for",
+    "do you have",
+    "are there",
+    "find",
+    "show",
+    "pull",
+)
+# Pre-compiled patterns anchored to start of string for each prefix phrase.
+# Sorted longest-first (already above) and compiled once at module load.
+_REQUEST_PREFIX_PATTERNS: tuple[re.Pattern, ...] = tuple(
+    re.compile(r'(?i)^' + re.escape(p) + r'\b')
+    for p in _REQUEST_PREFIX_PHRASES
+)
+
+_LEADING_PUNCT_WS = re.compile(r'^[\s\W]+')
+
 PERSON_PREFIXES: frozenset[str] = frozenset({
     "dr", "dr.", "prof", "prof.", "professor", "pi", "physician"
 })
@@ -445,6 +475,27 @@ class NameExtractor:
     # ------------------------------------------------------------------
     # extract  — main decision tree
     # ------------------------------------------------------------------
+    @staticmethod
+    def _strip_request_prefixes(query: str) -> str:
+        """Strip filler request phrases from the START of the query (Fix 2).
+
+        Applied greedily left-to-right until no prefix phrase matches.
+        Trailing whitespace and punctuation are stripped after each removal.
+        This is LOCAL to NameExtractor — canonical_query is never modified.
+        """
+        changed = True
+        while changed:
+            changed = False
+            for pat in _REQUEST_PREFIX_PATTERNS:
+                m = pat.match(query)
+                if m:
+                    query = query[m.end():]
+                    # Strip leading whitespace and punctuation
+                    query = _LEADING_PUNCT_WS.sub('', query)
+                    changed = True
+                    break  # restart from beginning after each strip
+        return query
+
     def extract(
         self,
         query: str,
@@ -452,6 +503,10 @@ class NameExtractor:
     ) -> NameResult:
         if excluded_spans is None:
             excluded_spans = []
+
+        # Strip filler request prefixes before any name extraction (Fix 2).
+        # This is local to NameExtractor — does NOT modify canonical_query.
+        query = self._strip_request_prefixes(query)
 
         # Track already-extracted spans
         extracted_spans: list[tuple[int, int]] = list(excluded_spans)

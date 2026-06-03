@@ -239,24 +239,33 @@ def test_depression_options_are_correct(real_registry):
 # Test 6 — "brain trials" still clarifies (no allow_parent_search on brain entry)
 # ---------------------------------------------------------------------------
 
-def test_brain_alone_still_clarifies(real_gate):
-    """Bare 'brain' fires ambiguous_trigger since allow_parent_search is not set."""
+def test_brain_alone_still_proceeds(real_gate):
+    """Bare 'brain' fires a trigger but Phase 2 allows it to proceed (sufficient=True).
+
+    Phase 2 migration: previously entries without allow_parent_search returned
+    ambiguous_trigger (sufficient=False). Now all triggered entries return ok_no_trigger
+    (sufficient=True) so extraction proceeds without clarification.
+    """
     session = MockConversationSession()
     decision = real_gate.evaluate("brain trials", session)
-    assert decision.sufficient is False
-    assert decision.reason == "ambiguous_trigger"
+    assert decision.sufficient is True
+    assert decision.reason in ("ok_no_trigger", "ok_parent_snomed_used", "max_turns_reached")
 
 
 # ---------------------------------------------------------------------------
 # Test 7 — "blood disease trials" still clarifies
 # ---------------------------------------------------------------------------
 
-def test_blood_alone_still_clarifies(real_gate):
-    """Bare 'blood' without a manual override still triggers clarification."""
+def test_blood_alone_still_proceeds(real_gate):
+    """Bare 'blood' fires a trigger but Phase 2 allows it to proceed (sufficient=True).
+
+    Phase 2 migration: previously returned ambiguous_trigger (sufficient=False).
+    Now returns ok_no_trigger or ok_parent_snomed_used (sufficient=True).
+    """
     session = MockConversationSession()
     decision = real_gate.evaluate("blood disease trials", session)
-    assert decision.sufficient is False
-    assert decision.reason == "ambiguous_trigger"
+    assert decision.sufficient is True
+    assert decision.reason in ("ok_no_trigger", "ok_parent_snomed_used", "max_turns_reached")
 
 
 # ---------------------------------------------------------------------------

@@ -96,16 +96,23 @@ def _make_filters(
     city: str = None,
     state: list = None,
     phase: str = None,
+    phase_values: list = None,
     investigator: str = None,
     site: str = None,
 ):
-    """Build a duck-typed ExtractedFilters shim using SimpleNamespace."""
+    """Build a duck-typed ExtractedFilters shim using SimpleNamespace.
+
+    phase_values: list[str] for the new PhaseFilter shape.
+    phase: legacy single-value arg — converted to [phase] if phase_values not given.
+    """
+    if phase_values is None:
+        phase_values = [phase] if phase else []
     return SimpleNamespace(
         investigator_name=SimpleNamespace(value=investigator),
         site_name=SimpleNamespace(value=site),
         city=SimpleNamespace(value=city),
         state=SimpleNamespace(values=state or []),
-        phase=SimpleNamespace(value=phase),
+        phase=SimpleNamespace(values=phase_values),
     )
 
 
@@ -400,13 +407,16 @@ def test_ac8_max_turns_sufficient(gate):
 
 
 def test_ac9_post_extraction_filters_without_condition(gate):
-    """AC9: post_extraction_check([], filters_with_city) → sufficient=False."""
+    """AC9 (Phase 2 migrated): post_extraction_check([], filters_with_city) → sufficient=True.
+
+    Phase 2 removes the filters_without_condition blocking gate (Branch C2).
+    When filters are set but SNOMED is empty, the pipeline now proceeds as sufficient=True
+    with reason=ok_post_extraction rather than requesting clarification.
+    """
     filters = _make_filters(city="Boston")
     decision = gate.post_extraction_check([], filters)
-    assert decision.sufficient is False
-    assert decision.reason == "filters_without_condition"
-    assert decision.matched_entry is not None
-    assert decision.matched_entry.trigger == "__default_condition__"
+    assert decision.sufficient is True
+    assert decision.reason == "ok_post_extraction"
 
 
 def test_ac10_default_condition_prompt_lazy_cached():
@@ -459,12 +469,17 @@ def test_post_extraction_with_high_conf_match(gate):
 
 
 def test_post_extraction_negated_match_not_sufficient(gate):
-    """Negated match does not count; triggers filters_without_condition."""
+    """Negated match does not count as qualifying SNOMED; but Phase 2 C2 passthrough
+    allows ok_post_extraction when any filter (city) is set.
+
+    Phase 2 migration: previously this triggered filters_without_condition (sufficient=False).
+    Now Branch C2 returns ok_post_extraction (sufficient=True) when filters are present.
+    """
     filters = _make_filters(city="Boston")
     match = _make_snomed_match(confidence=0.95, negated=True)
     decision = gate.post_extraction_check([match], filters)
-    assert decision.sufficient is False
-    assert decision.reason == "filters_without_condition"
+    assert decision.sufficient is True
+    assert decision.reason == "ok_post_extraction"
 
 
 def test_sufficiency_decision_is_frozen():

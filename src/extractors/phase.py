@@ -25,6 +25,10 @@ class PhaseResult:
     value: Optional[str]
     confidence: float
     span: Optional[tuple[int, int]]
+    # Multi-value support for conjunctions ("Phase 2 or 3", "Phase 2/3").
+    # When populated, contains all resolved phase values.
+    # When None, callers should fall back to [value] if value is not None.
+    values: Optional[list[str]] = None
 
 
 # (compiled_pattern, normalized_value, confidence)
@@ -43,6 +47,24 @@ _EXACT_PATTERNS: list[tuple[re.Pattern, str, float]] = [
     (re.compile(r'\bp[\-\s]?1\b', re.IGNORECASE), "Phase 1", 0.95),
     (re.compile(r'\bphase\s*(?:iv|4)\b', re.IGNORECASE), "Phase 4", 0.95),
     (re.compile(r'\bp[\-\s]?4\b', re.IGNORECASE), "Phase 4", 0.95),
+]
+
+# Conjunction patterns: "Phase 2 or 3", "Phase 2 and 3", "Phase 2/3",
+# "Phase II or III", etc.  Each maps to a (phase_a, phase_b) pair.
+# Ordered most-specific first.  Captured groups: (phase_num_a, phase_num_b).
+_CONJUNCTION_PATTERNS: list[tuple[re.Pattern, str, str, float]] = [
+    # Phase 2/3  or Phase II/III  (slash — already in _EXACT_PATTERNS as single value;
+    # here we expand to TWO values instead)
+    (re.compile(r'\bphase\s*(?:ii|2)\s*/\s*(?:iii|3)\b', re.IGNORECASE), "Phase 2", "Phase 3", 0.95),
+    (re.compile(r'\bphase\s*(?:i|1)\s*/\s*(?:ii|2)\b', re.IGNORECASE), "Phase 1", "Phase 2", 0.95),
+    # Phase 2 or 3 / Phase II or III
+    (re.compile(r'\bphase\s*(?:ii|2)\s+or\s+(?:iii|3)\b', re.IGNORECASE), "Phase 2", "Phase 3", 0.95),
+    (re.compile(r'\bphase\s*(?:i|1)\s+or\s+(?:ii|2)\b', re.IGNORECASE), "Phase 1", "Phase 2", 0.95),
+    (re.compile(r'\bphase\s*(?:iii|3)\s+or\s+(?:iv|4)\b', re.IGNORECASE), "Phase 3", "Phase 4", 0.95),
+    # Phase 2 and 3 / Phase II and III
+    (re.compile(r'\bphase\s*(?:ii|2)\s+and\s+(?:iii|3)\b', re.IGNORECASE), "Phase 2", "Phase 3", 0.95),
+    (re.compile(r'\bphase\s*(?:i|1)\s+and\s+(?:ii|2)\b', re.IGNORECASE), "Phase 1", "Phase 2", 0.95),
+    (re.compile(r'\bphase\s*(?:iii|3)\s+and\s+(?:iv|4)\b', re.IGNORECASE), "Phase 3", "Phase 4", 0.95),
 ]
 
 _ALIAS_PATTERNS: list[tuple[re.Pattern, str, float]] = [
@@ -78,6 +100,17 @@ class PhaseExtractor:
     def extract(self, query: str) -> PhaseResult:
         if not query:
             return PhaseResult(value=None, confidence=0.0, span=None)
+
+        # Check conjunction patterns first (more specific than single-phase patterns)
+        for pat, phase_a, phase_b, conf in _CONJUNCTION_PATTERNS:
+            m = pat.search(query)
+            if m:
+                return PhaseResult(
+                    value=phase_a,
+                    confidence=conf,
+                    span=m.span(),
+                    values=[phase_a, phase_b],
+                )
 
         for pat, value, conf in _ALL_PATTERNS:
             m = pat.search(query)

@@ -66,11 +66,17 @@ def _make_ambiguous_entry(
 def _make_clarification_decision(
     triggered_by: str = "cancer",
 ) -> SufficiencyDecision:
-    """SufficiencyDecision representing a pre-extraction ambiguous trigger."""
+    """SufficiencyDecision representing a turn decision used in conversation tests.
+
+    Phase 2 migration: ambiguous_trigger is removed; use max_turns_reached (sufficient=False)
+    to exercise the session clarification-count tracking path.
+    The conversation session tests only care about the structural turn plumbing, not the
+    specific gate reason — clarification_turn_count() counts sufficient=False turns.
+    """
     entry = _make_ambiguous_entry(trigger=triggered_by)
     return SufficiencyDecision(
         sufficient=False,
-        reason="ambiguous_trigger",
+        reason="max_turns_reached",
         triggered_by=triggered_by,
         matched_entry=entry,
     )
@@ -140,7 +146,7 @@ def test_c1_single_ambiguous_turn_is_clarification():
     t = session.turns[0]
     assert t.decision is not None
     assert t.decision.sufficient is False
-    assert t.decision.reason == "ambiguous_trigger"
+    assert t.decision.reason == "max_turns_reached"
     assert session.clarification_turn_count() == 1
     assert session.is_max_turns_reached() is False
 
@@ -364,29 +370,30 @@ def test_c9_parallel_sessions_no_state_leak():
 # ---------------------------------------------------------------------------
 
 def test_c10_post_extraction_decision_shape():
-    """C10: Post-extraction safety decision has correct shape.
+    """C10 (Phase 2 migrated): Post-extraction safety decision has correct shape.
 
-    Full pipeline integration requires Wave 4-5 components.  This test confirms
-    that a SufficiencyDecision with reason='filters_without_condition' and
-    sufficient=False is structurally correct and can be stored in a Turn.
+    Phase 2 removes filters_without_condition. This test now verifies that a
+    SufficiencyDecision with reason='ok_post_extraction' (the new behavior when
+    filters are set but SNOMED is absent) is structurally correct and can be
+    stored in a Turn.
     """
     entry = _make_ambiguous_entry("__default_condition__")
     decision = SufficiencyDecision(
-        sufficient=False,
-        reason="filters_without_condition",
+        sufficient=True,
+        reason="ok_post_extraction",
         triggered_by=None,
         matched_entry=entry,
     )
 
-    assert decision.sufficient is False
-    assert decision.reason == "filters_without_condition"
+    assert decision.sufficient is True
+    assert decision.reason == "ok_post_extraction"
     assert decision.triggered_by is None
     assert decision.matched_entry is not None
     assert "Lung Cancer" in decision.matched_entry.options
 
     # Confirm it can be stored in a Turn without error
     turn = _make_turn(0, "What's at Mayo?", "What's at Mayo?", decision=decision)
-    assert turn.decision.reason == "filters_without_condition"
+    assert turn.decision.reason == "ok_post_extraction"
 
 
 # ---------------------------------------------------------------------------
