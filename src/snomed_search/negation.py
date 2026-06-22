@@ -13,6 +13,7 @@ NEGATION_CUES_PRE: list[str] = [
     "no", "not", "without", "denies", "denied", "rules out", "ruled out",
     "history of", "h/o", "free of", "absence of", "absent", "neither",
     "negative for", "no evidence of", "no signs of",
+    "not currently recruiting", "not focusing on",
 ]
 NEGATION_CUES_POST: list[str] = [
     "unlikely", "ruled out", "negative", "denied",
@@ -28,6 +29,9 @@ PSEUDO_NEGATION_PHRASES: list[str] = [
 # same negated clause (e.g. "no history of cardiac issues, diabetes, stroke").
 SCAN_STOP_PUNCT: frozenset[str] = frozenset(".;!?\n")
 WINDOW_SIZE: int = 5
+# Conjunctions that propagate negation from an adjacent already-negated sibling.
+# "not X or Y" must negate both X and Y; this set identifies the bridge tokens.
+_COORD_CONJUNCTIONS: frozenset[str] = frozenset({"or", "and"})
 
 
 class NegationAnnotator:
@@ -49,6 +53,15 @@ class NegationAnnotator:
         Returns a new list where each SNOMEDMatch.negated is set per NegEx rules.
         Input SNOMEDMatch objects are frozen dataclasses; new objects created via replace().
         Does not mutate the input list or any input SNOMEDMatch.
+
+        Two-pass strategy:
+          Pass 1: standard NegEx window scan — produces initial negated flags.
+          Pass 2: conjunction propagation — "not X or Y" negates both X and Y.
+            If a match is preceded by a coordinating conjunction token (or/and) and
+            the nearest sibling match immediately before that conjunction is negated,
+            this match inherits negated=True.  This covers "not focusing on skin cancer
+            or bone marrow conditions" where the barrier from skin cancer prevents the
+            pre-window scan from reaching "not" for the bone marrow term.
         """
         tokens: list[tuple[str, int, int]] = self._tokenize_with_offsets(query)
         logger.debug(
@@ -56,12 +69,48 @@ class NegationAnnotator:
             len(tokens),
             len(matches),
         )
+
+        # Pass 1: standard NegEx per-match.
         annotated: list[SNOMEDMatch] = []
         for m in matches:
             other_spans = [o.span for o in matches if o is not m]
             is_neg = self._is_negated(query, tokens, m, other_spans)
             annotated.append(replace(m, negated=is_neg))
-        return annotated
+
+        # Pass 2: propagate negation across coordinating conjunctions.
+        # Sort by span start so adjacent pairs are identified correctly.
+        annotated_sorted = sorted(annotated, key=lambda m: m.span[0])
+        result: list[SNOMEDMatch] = list(annotated_sorted)
+        for idx in range(1, len(annotated_sorted)):
+            current = annotated_sorted[idx]
+            if current.negated:
+                continue  # already negated — nothing to propagate
+
+            # Find the token immediately before this match.
+            match_start_token: Optional[int] = self._find_token_index(
+                tokens, current.span[0]
+            )
+            if match_start_token is None or match_start_token == 0:
+                continue
+
+            pre_token_text, pre_start, pre_end = tokens[match_start_token - 1]
+            # Skip past leading punctuation that may be attached to the token.
+            pre_token_clean = pre_token_text.strip(",.;:!?").lower()
+            if pre_token_clean not in _COORD_CONJUNCTIONS:
+                continue
+
+            # The token before the conjunction belongs to (or follows) the previous sibling.
+            # Check whether any earlier match (span ending before current) is negated.
+            prev_sibling = annotated_sorted[idx - 1]
+            if prev_sibling.negated:
+                # Same sentence guard: no sentence-boundary stop punct between the two matches.
+                between = query[prev_sibling.span[1]: current.span[0]]
+                if not any(ch in between for ch in SCAN_STOP_PUNCT):
+                    result[idx] = replace(current, negated=True)
+
+        # Restore original ordering.
+        span_to_result = {m.span: m for m in result}
+        return [span_to_result.get(m.span, m) for m in annotated]
 
     def _is_negated(
         self,

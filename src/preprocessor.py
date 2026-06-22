@@ -21,7 +21,7 @@ class Preprocessor:
     """Sanitizes and validates raw query strings before LLM extraction."""
 
     MIN_LENGTH = 3
-    MAX_LENGTH = 500
+    MAX_LENGTH = 1000
 
     # Patterns that are never legitimate clinical queries.
     # Split into logical groups for maintainability.
@@ -175,4 +175,4 @@ class Preprocessor:
         if len(stripped) < self.MIN_LENGTH:
             raise PreprocessorError("Query must be at least 3 characters")
         if len(stripped) > self.MAX_LENGTH:
-            raise PreprocessorError("Query must be under 500 characters")
+            raise PreprocessorError("Query must be under 1000 characters")

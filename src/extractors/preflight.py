@@ -100,6 +100,19 @@ _NON_CLINICAL_TOPIC_TOKENS: frozenset[str] = frozenset({
     "shopping", "sports", "news", "politics", "finance",
 })
 
+# Structural/administrative words that appear in SNOMED terms (e.g. "clinical
+# trial" / 169230002) but carry zero real medical intent on their own.
+# Used only in the non-clinical-topic gate: a SNOMED hit whose matched term
+# is composed entirely of these tokens is treated as noise, not clinical
+# signal, so it cannot mask an otherwise non-clinical query.
+_CLINICAL_NOISE_TOKENS: frozenset[str] = frozenset({
+    "clinical", "trial", "trials", "clinic", "clinics",
+    "study", "studies", "studied",
+    "research", "researching",
+    "office", "offices",
+    "trialing",
+})
+
 
 
 @dataclass
@@ -151,6 +164,22 @@ class PreflightMandatoryCheck:
     def _signal_a_snomed(self, query_lower: str) -> bool:
         for term in self._snomed_sample:
             if re.search(r"\b" + re.escape(term) + r"\b", query_lower):
+                return True
+        return False
+
+    def _signal_a_snomed_real(self, query_lower: str) -> bool:
+        """Like _signal_a_snomed but excludes SNOMED terms whose every token
+        is in _CLINICAL_NOISE_TOKENS (e.g. "clinical trial").  Used only by
+        the non-clinical-topic gate so that stop-concepts like 169230002 cannot
+        mask a non-clinical query.
+        """
+        for term in self._snomed_sample:
+            if not re.search(r"\b" + re.escape(term) + r"\b", query_lower):
+                continue
+            # A term counts as real only when at least one of its tokens is
+            # not a structural noise word.
+            term_tokens = re.findall(r"[a-z]+", term)
+            if any(tok not in _CLINICAL_NOISE_TOKENS for tok in term_tokens):
                 return True
         return False
 
@@ -305,8 +334,12 @@ class PreflightMandatoryCheck:
 
         sig_person = sig_b_person_prefix or sig_c_person_suffix
         query_tokens = re.findall(r"[a-z']+", query_lower)
+        # For the non-clinical-topic gate, ignore SNOMED hits that consist
+        # solely of structural noise tokens (e.g. "clinical trial" / 169230002)
+        # — they must not protect a non-clinical query from rejection.
+        sig_a_real = self._signal_a_snomed_real(query_lower)
         if (
-            not sig_a_known_term
+            not sig_a_real
             and not sig_person
             and any(tok in _NON_CLINICAL_TOPIC_TOKENS for tok in query_tokens)
         ):

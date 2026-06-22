@@ -28,16 +28,24 @@ def is_negated_span(query: str, span_start: int,
     before span_start in the same clause (no intervening sentence
     boundary).
 
+    Negation does not cross clause boundaries: the backward scan is
+    scoped to the current clause (after the nearest preceding comma,
+    semicolon, or sentence-ending punctuation), so a "not"/"neither"
+    governing an earlier clause does not suppress this span.
+
     Bounded scan — safe against adversarial input.
     """
     prefix = query[:span_start]
-    prefix_tokens = prefix.split()
-    window = " ".join(prefix_tokens[-window_tokens:])
+    boundary = max(
+        prefix.rfind(','), prefix.rfind(';'), prefix.rfind('.'),
+        prefix.rfind('!'), prefix.rfind('?'),
+    )
+    clause = prefix[boundary + 1:] if boundary != -1 else prefix
+    clause_tokens = clause.split()
+    window = " ".join(clause_tokens[-window_tokens:])
     if _NEG_CUE_PATTERN.search(window):
         return True
-    neither_m = re.search(r'\bneither\b', prefix, re.IGNORECASE)
+    neither_m = re.search(r'\bneither\b', clause, re.IGNORECASE)
     if neither_m:
-        between = query[neither_m.end():span_start]
-        if not re.search(r'[.;!?]', between):
-            return True
+        return True
     return False

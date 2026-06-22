@@ -321,7 +321,10 @@ def _render_turn_result(turn_index: int, turn) -> None:
         # The actual NLPOutput is stored in session_state alongside the session.
         outputs = st.session_state.get("turn_outputs", {})
         output = outputs.get(turn_index)
-        if output is not None and isinstance(output, NLPOutput):
+        # Duck-type rather than isinstance: Streamlit hot-reloads src modules on
+        # file change, which rebinds NLPOutput to a new class object, so results
+        # built before the reload fail isinstance even though they are valid.
+        if output is not None and getattr(output, "type", None) == "search":
             # Pass canonical_query from the turn for the "Edit this search" button
             canonical_q = getattr(turn, "canonical_query", None)
             _render_nlp_output(output, canonical_query=canonical_q)
@@ -423,11 +426,11 @@ def main() -> None:
     _init_session_state()
 
     # Handle "Edit this search" pre-population: if a previous turn set edit_query,
-    # read and clear it so the chat input starts with that text.
+    # read it so the input starts with that text. It must persist across the
+    # widget-interaction rerun (text_input + submit button both trigger reruns),
+    # so it is cleared only when the edit is actually submitted — not here.
     # edit_query is canonical_query — never logged here.
-    prefill_query: Optional[str] = None
-    if "edit_query" in st.session_state:
-        prefill_query = st.session_state.pop("edit_query")
+    prefill_query: Optional[str] = st.session_state.get("edit_query")
 
     pipeline = load_pipeline()
     render_sidebar(pipeline_ready=pipeline is not None)
@@ -461,7 +464,9 @@ def main() -> None:
         and (last_turn.decision is None or last_turn.decision.sufficient)
     )
 
-    if conversation_terminal:
+    # A pending "Edit this search" prefill must override the terminal state —
+    # the search is complete, but the user explicitly asked to refine it.
+    if conversation_terminal and prefill_query is None:
         st.info(
             "Search complete. Click **New Search** in the sidebar to start a new query.",
             icon="✅",
@@ -481,11 +486,21 @@ def main() -> None:
             key="edit_query_input",
         )
         if st.button("Submit edited query", key="submit_edit_btn"):
-            pass  # user_input is already set
-        else:
-            user_input = None  # don't submit until button clicked
-    else:
-        user_input = st.chat_input("Type your clinical research query...")
+            # Clear the prefill now that the edit is being submitted.
+            st.session_state.pop("edit_query", None)
+            if user_input and user_input.strip():
+                # An edit replaces the prior query, so run it in a fresh session —
+                # otherwise compute_canonical_query would append the edit to the
+                # old canonical query (the prior turn is sufficient/terminal).
+                session = ConversationSession.new()
+                st.session_state["conversation"] = session
+                turn_outputs = {}
+                st.session_state["turn_outputs"] = turn_outputs
+                _run_pipeline_turn_and_capture(
+                    pipeline, user_input.strip(), session, turn_outputs
+                )
+        return
+    user_input = st.chat_input("Type your clinical research query...")
     if user_input and user_input.strip():
         _run_pipeline_turn_and_capture(pipeline, user_input.strip(), session, turn_outputs)
 

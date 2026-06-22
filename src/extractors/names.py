@@ -188,6 +188,10 @@ class NameResult:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+def _capitalize_name_parts(name: str) -> str:
+    return re.sub(r"(['\-])([a-z])", lambda m: m.group(1) + m.group(2).upper(), name)
+
+
 def _spans_overlap(
     span: tuple[int, int],
     existing: list[tuple[int, int]],
@@ -358,6 +362,12 @@ class NameExtractor:
     # ------------------------------------------------------------------
     def _matches_institution_keyword(self, text: str) -> bool:
         text_lower = text.lower()
+        # A candidate composed entirely of structural/query words (e.g.
+        # "all clinical", "the clinical") is never a site name, even though
+        # "clinic" is a substring of "clinical".
+        words = text_lower.split()
+        if words and all(w in _INSTITUTION_MATCH_BLOCKLIST for w in words):
+            return False
         # Substring match against primary and suffix sets
         for kw in self._primary_set | self._suffix_set:
             if kw in text_lower:
@@ -394,14 +404,18 @@ class NameExtractor:
             name_candidate = " ".join(name_tokens).strip()
 
             if role_token in _ROLE_PERSON:
+                if not name_candidate or len(name_tokens) > 4:
+                    continue  # prose clause, not a "<name> <role>" structured segment
                 role_matched += 1
-                if name_candidate and len(name_candidate) <= MAX_NAME_LENGTH:
+                if len(name_candidate) <= MAX_NAME_LENGTH:
                     # Title-case the name candidate
                     inv_name = name_candidate.title()
                     inv_conf = 0.95
             elif role_token in _ROLE_SITE:
+                if not name_candidate or len(name_tokens) > 4:
+                    continue  # prose clause, not a "<name> <role>" structured segment
                 role_matched += 1
-                if name_candidate and len(name_candidate) <= MAX_NAME_LENGTH:
+                if len(name_candidate) <= MAX_NAME_LENGTH:
                     site_name = name_candidate.title()
                     site_conf = 0.95
 
@@ -472,10 +486,15 @@ class NameExtractor:
         if city_raw is None:
             for key in sorted(self._geo_region_keys, key=len, reverse=True):
                 m = re.search(r'\b' + re.escape(key) + r'\b', q_lower)
-                if m and not is_negated_span(q_lower, m.start()):
+                if m:
                     info = self._regions_data[key]
                     original_region_term = key
                     is_region_match = True
+                    # A negated region ("not in New England") is still recognised
+                    # as a region reference, but contributes no positive states.
+                    if is_negated_span(q_lower, m.start()):
+                        region_states = []
+                        break
                     region_states = list(info.get("region_states", []))
                     if region_states:
                         negated_states: set[str] = set()
@@ -552,7 +571,18 @@ class NameExtractor:
 
         # Strip filler request prefixes before any name extraction (Fix 2).
         # This is local to NameExtractor — does NOT modify canonical_query.
+        # excluded_spans arrive in the caller's (pre-strip) coordinate space, so
+        # they must be shifted left by the stripped-prefix length to stay aligned
+        # with the post-strip query the rest of this method operates on.
+        _orig_len = len(query)
         query = self._strip_request_prefixes(query)
+        _strip_offset = _orig_len - len(query)
+        if _strip_offset:
+            excluded_spans = [
+                (max(0, s - _strip_offset), e - _strip_offset)
+                for (s, e) in excluded_spans
+                if e - _strip_offset > 0
+            ]
 
         # Track already-extracted spans
         extracted_spans: list[tuple[int, int]] = list(excluded_spans)
@@ -643,6 +673,8 @@ class NameExtractor:
                 continue
             trimmed_tokens = []
             for i, tok in enumerate(tokens):
+                if tok in _STOPWORDS:
+                    break
                 if tok.lower() in self._snomed_single_tokens:
                     break
                 if i + 1 < len(tokens) and (tok.lower(), tokens[i + 1].lower()) in self._snomed_multi_tokens:
@@ -924,6 +956,13 @@ class NameExtractor:
         if site_name and len(site_name) > MAX_NAME_LENGTH:
             site_name = None
             site_conf = 0.0
+
+        # Title-normalisation lower-cases the letter after an apostrophe/hyphen
+        # ("O'brien"); restore the intra-name capital for display.
+        if inv_name:
+            inv_name = _capitalize_name_parts(inv_name)
+        if site_name:
+            site_name = _capitalize_name_parts(site_name)
 
         # -------------------------------------------------------------------
         # Logging (HIPAA: no name values)

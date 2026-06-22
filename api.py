@@ -102,7 +102,7 @@ ALLOWED_ORIGINS = os.environ.get(
 
 SAFE_PREPROCESSOR_MESSAGES = frozenset({
     "Query must be at least 3 characters",
-    "Query must be under 500 characters",
+    "Query must be under 1000 characters",
     "Invalid query detected",
     "No clinical content found. Please enter a query about a medical condition, "
     "investigator, research site, location, or study phase.",
@@ -274,7 +274,7 @@ ResponseOutput = Annotated[
 ]
 
 class QueryRequest(BaseModel):
-    query: str = Field(..., min_length=3, max_length=500)
+    query: str = Field(..., min_length=3, max_length=1000)
     session_id: str | None = Field(default=None)
 
 class QueryResponse(BaseModel):

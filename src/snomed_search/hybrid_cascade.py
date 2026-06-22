@@ -436,46 +436,99 @@ class HybridCascadeStrategy:
         residual_spans: list[tuple[int, int]],
     ) -> list[SNOMEDMatch]:
         """
-        For each residual span:
-          1. Extract substring from query.
-          2. Run rapidfuzz token_sort_ratio against ALL preferred_terms (exact_index keys).
-          3. If best score >= self._fuzzy_cutoff: create SNOMEDMatch with
-             confidence = score / 100.0, match_type = "fuzzy".
-          4. span = (span_start, span_end) of the residual character span.
+        For each residual span, enumerate 1..MAX_NGRAM_WINDOW token windows and
+        fuzzy-match each window against both preferred_terms and synonym_index.
+        Using fuzz.ratio per window catches typos embedded in long queries
+        (e.g. "Breast Canccer" inside a full natural-language request) where
+        token_sort_ratio on the full residual substring would dilute the score
+        below cutoff.
 
-        NOT logged: extracted substring text.
+        Per-anchor strategy: for each token start position i, keep only the highest-
+        scoring window of any length starting at i.  This yields one candidate per
+        anchor; overlapping candidates are resolved later by _dedup_longest_match.
+
+        Token windows shorter than _MIN_WINDOW_LEN chars are skipped to avoid
+        spurious single-letter matches.
+
+        NOT logged: extracted substring or window text.
         """
         all_preferred_terms = list(self._exact_index.keys())
+        all_synonym_terms = list(self._synonym_index.keys())
         hits: list[SNOMEDMatch] = []
+        # Guard: minimum token-window char length to enter fuzzy comparison.
+        # Single letters and very short tokens produce false positives at high ratios.
+        _MIN_WINDOW_LEN = 4
 
         for span_start, span_end in residual_spans:
-            substring = query[span_start:span_end].strip()
-            if not substring:
+            substring = query[span_start:span_end]
+            if not substring.strip():
                 continue
 
-            result = rf_process.extractOne(
-                substring,
-                all_preferred_terms,
-                scorer=fuzz.token_sort_ratio,
-                score_cutoff=self._fuzzy_cutoff,
-            )
-            if result is None:
-                continue
+            tokens = self._tokenize_with_offsets(substring)
 
-            matched_term, score, _ = result
-            record = self._exact_index.get(matched_term)
-            if record is None:
-                continue
+            # Collect per-anchor-index best candidate.
+            # Key = anchor token index i; value = best SNOMEDMatch found starting at i.
+            anchor_best: dict[int, SNOMEDMatch] = {}
 
-            hits.append(SNOMEDMatch(
-                code=record["concept_id"],
-                display=record["preferred_term"],
-                match_type="fuzzy",
-                confidence=round(score / 100.0, 4),
-                original_text=substring,
-                span=(span_start, span_end),
-                negated=False,
-            ))
+            for n in range(MAX_NGRAM_WINDOW, 0, -1):
+                for i in range(len(tokens) - n + 1):
+                    window = tokens[i: i + n]
+                    window_text = " ".join(t[0] for t in window).lower()
+                    if len(window_text) < _MIN_WINDOW_LEN:
+                        continue
+
+                    # Offsets relative to original query, not the residual substring.
+                    win_start = span_start + window[0][1]
+                    win_end = span_start + window[-1][2]
+
+                    # Check preferred-term index first (higher confidence).
+                    res_exact = rf_process.extractOne(
+                        window_text,
+                        all_preferred_terms,
+                        scorer=fuzz.ratio,
+                        score_cutoff=self._fuzzy_cutoff,
+                    )
+                    if res_exact is not None:
+                        matched_term, score, _ = res_exact
+                        record = self._exact_index.get(matched_term)
+                        if record:
+                            current_best = anchor_best.get(i)
+                            if current_best is None or score > current_best.confidence * 100:
+                                anchor_best[i] = SNOMEDMatch(
+                                    code=record["concept_id"],
+                                    display=record["preferred_term"],
+                                    match_type="fuzzy",
+                                    confidence=round(score / 100.0, 4),
+                                    original_text=window_text,
+                                    span=(win_start, win_end),
+                                    negated=False,
+                                )
+                        continue  # prefer preferred-term hit; skip synonym check for same window
+
+                    # Fall back to synonym index for this window.
+                    res_syn = rf_process.extractOne(
+                        window_text,
+                        all_synonym_terms,
+                        scorer=fuzz.ratio,
+                        score_cutoff=self._fuzzy_cutoff,
+                    )
+                    if res_syn is not None:
+                        matched_syn, score, _ = res_syn
+                        record = self._synonym_index.get(matched_syn)
+                        if record:
+                            current_best = anchor_best.get(i)
+                            if current_best is None or score > current_best.confidence * 100:
+                                anchor_best[i] = SNOMEDMatch(
+                                    code=record["concept_id"],
+                                    display=record["preferred_term"],
+                                    match_type="fuzzy",
+                                    confidence=round(score / 100.0, 4),
+                                    original_text=window_text,
+                                    span=(win_start, win_end),
+                                    negated=False,
+                                )
+
+            hits.extend(anchor_best.values())
 
         return hits
 

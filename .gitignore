@@ -45,3 +45,6 @@ qa_testing/suites/suite_04.json
 qa_testing/suites/suite_05.json
 qa_testing/run_suites.py
 qa_testing/results/
+data structure/gold_data_model.html
+data structure/gold_schema.html
+CHAT_WITH_DATA_ARCHITECTURE.md

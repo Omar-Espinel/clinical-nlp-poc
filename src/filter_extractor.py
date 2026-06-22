@@ -141,11 +141,18 @@ class DeterministicFilterExtractor:
         safe_excluded = []
         for gs in geo_spans:
             geo_text = canonical_query[gs[0]:gs[1]].lower()
-            is_site_prefix = any(
-                mw.startswith(geo_text + " ") or mw == geo_text
+            # Keep a geo span out of the exclusion list if its text is a
+            # whole-word component (prefix, suffix, interior, or the whole)
+            # of a known multiword site, so e.g. "Toronto" does not block the
+            # "University of Toronto" site match.
+            is_site_component = any(
+                mw == geo_text
+                or mw.startswith(geo_text + " ")
+                or mw.endswith(" " + geo_text)
+                or (" " + geo_text + " ") in mw
                 for mw in self._names._multiword_set
             )
-            if not is_site_prefix:
+            if not is_site_component:
                 safe_excluded.append(gs)
         excluded = safe_excluded + metric_spans + phase_span
         name_result = self._names.extract(canonical_query, excluded_spans=excluded)
@@ -170,6 +177,10 @@ class DeterministicFilterExtractor:
                 state_filter = StateFilter(values=geo_norm.states if geo_norm.states else [], confidence=geo_norm.confidence, is_region=True)
             else:
                 state_filter = StateFilter(values=[], confidence=0.0, is_region=True)
+        elif geo_result.is_region:
+            # Region matched but contributes no positive states (e.g. a fully
+            # negated region like "not in New England") — still flag is_region.
+            state_filter = StateFilter(values=[], confidence=0.95, is_region=True)
         elif geo_result.state_raw:
             state_filter = StateFilter(values=[geo_result.state_raw], confidence=0.90, is_region=False)
         else:

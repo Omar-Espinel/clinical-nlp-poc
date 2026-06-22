@@ -298,13 +298,15 @@ class ResponseAssembler:
         negated_excluded = 0
         match_type_counts: dict[str, int] = {}
 
-        snomed_matches = sorted(snomed_matches, key=lambda m: m.confidence, reverse=True)
+        # Non-negated matches first, then by confidence — keeps snomed_terms[0]
+        # a positive match while still surfacing negated concepts (negated=True)
+        # so consumers can see what the query explicitly excluded.
+        snomed_matches = sorted(snomed_matches, key=lambda m: (m.negated, -m.confidence))
 
         for match in snomed_matches:
-            if match.negated:
-                negated_excluded += 1
-                continue
             if match.confidence < self.MIN_CONFIDENCE:
+                if match.negated:
+                    negated_excluded += 1
                 continue
             included.append(
                 SNOMEDTermOutput(
@@ -332,7 +334,10 @@ class ResponseAssembler:
             city_conf = geo.confidence
             state_values = geo.states
             state_conf = geo.confidence
-            state_is_region = geo.is_region
+            # A metro region (e.g. "Bay Area") resolves to a single primary city,
+            # so GeoNormalizer reports is_region=False; preserve the region flag the
+            # extractor set when it matched a region term.
+            state_is_region = geo.is_region or filters.state.is_region
         else:
             city_value = filters.city.value
             city_conf = filters.city.confidence
